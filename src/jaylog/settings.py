@@ -27,6 +27,9 @@ class JaylogSettings(BaseSettings):
     log_http_api_key: Optional[str] = None
     log_http_timeout: float = 5.0
 
+    # Screenshot (log_img field) — desativar com JAYLOG_LOG_SCREENSHOT_ENABLED=false
+    log_screenshot_enabled: bool = True
+
     @field_validator("log_dir", mode="after")
     @classmethod
     def validate_log_dir(cls, v: Path) -> Path:

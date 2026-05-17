@@ -2,6 +2,7 @@ import logging
 from logging.handlers import QueueHandler, QueueListener
 from queue import Queue
 
+from jaylog.formatters import configure_screenshot
 from jaylog.handlers.file_handler import JaylogFileHandler
 from jaylog.handlers.http_handler import JaylogHttpHandler
 from jaylog.settings import JaylogSettings
@@ -28,6 +29,8 @@ def get_logger(settings: JaylogSettings | None = None) -> logging.Logger:
         settings = JaylogSettings()
 
     name = settings.app_name
+
+    configure_screenshot(settings.log_screenshot_enabled)
 
     if name in _registry:
         return _registry[name][0]

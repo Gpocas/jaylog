@@ -4,12 +4,13 @@ from pydantic import BaseModel
 
 
 class LogEntry(BaseModel):
-    timestamp: datetime
-    level: str
+    log_timestamp: datetime
+    log_level: str
     is_exception: bool
-    msg: str
-    traceback_msg: Optional[str] = None
-    logger_name: str
-    host_username: str
+    log_message: str
+    service: str
+    username: str
     hostname: str
-    host_ip: str
+    ipv4: str
+    service_path: str
+    log_img: Optional[str] = None
