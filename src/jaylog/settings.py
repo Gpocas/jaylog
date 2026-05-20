@@ -8,7 +8,7 @@ from jaylog.formatters import _HOSTNAME, _HOST_USERNAME
 
 
 class JaylogSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="JAYLOG_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="JAYLOG_", env_file=(".env", ".env.logging"), extra="ignore")
 
     # App identity
     app_name: str = "app"
