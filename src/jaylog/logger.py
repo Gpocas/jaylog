@@ -1,4 +1,6 @@
+import atexit
 import logging
+import signal
 from logging.handlers import QueueHandler, QueueListener
 from queue import Queue
 
@@ -9,6 +11,23 @@ from jaylog.settings import JaylogSettings
 
 # Registry: name -> (logger, listener) so callers can shut down cleanly
 _registry: dict[str, tuple[logging.Logger, QueueListener]] = {}
+_shutdown_registered = False
+
+
+def _register_shutdown_hooks() -> None:
+    global _shutdown_registered
+    if _shutdown_registered:
+        return
+    _shutdown_registered = True
+
+    atexit.register(shutdown)
+
+    def _sigterm_handler(signum, frame):  # noqa: ANN001
+        shutdown()
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        signal.raise_signal(signal.SIGTERM)
+
+    signal.signal(signal.SIGTERM, _sigterm_handler)
 
 
 def get_logger(settings: JaylogSettings | None = None) -> logging.Logger:
@@ -77,6 +96,7 @@ def get_logger(settings: JaylogSettings | None = None) -> logging.Logger:
     logger.propagate = False
 
     _registry[name] = (logger, listener)
+    _register_shutdown_hooks()
     return logger
 
 

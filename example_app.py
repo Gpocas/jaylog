@@ -6,7 +6,7 @@ Press Ctrl+C to stop gracefully.
 import random
 import time
 
-from jaylog import JaylogSettings, get_logger, shutdown
+from jaylog import JaylogSettings, get_logger
 
 logger = get_logger(JaylogSettings())
 
@@ -40,7 +40,6 @@ def run():
     cycle = 0
     try:
         while True:
-            time.sleep(5)
             cycle += 1
             logger.debug("Starting cycle %d", cycle)
 
@@ -72,10 +71,7 @@ def run():
             time.sleep(2)
 
     except KeyboardInterrupt:
-        logger.info("Shutdown signal received — stopping after cycle %d", cycle)
-    finally:
-        shutdown()
-        print("\nLogger shut down cleanly.")
+        pass
 
 
 if __name__ == "__main__":
