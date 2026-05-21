@@ -7,6 +7,9 @@ import random
 import time
 
 from jaylog import JaylogSettings, get_logger
+import jaylog
+
+logger = jaylog.get_logger(jaylog.JaylogSettings())
 
 logger = get_logger(JaylogSettings())
 
