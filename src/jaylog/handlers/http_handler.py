@@ -48,6 +48,7 @@ class JaylogHttpHandler(logging.Handler):
         proxy: str | None = None,
         proxy_user: str | None = None,
         proxy_password: str | None = None,
+        proxy_ntlm: bool = False,
     ) -> None:
         super().__init__()
         self.endpoint = endpoint
@@ -55,8 +56,13 @@ class JaylogHttpHandler(logging.Handler):
         self._session = requests.Session()
         self._session.headers["x-api-key"] = api_key
         if proxy:
-            encoded = _encode_proxy(proxy, proxy_user, proxy_password)
-            self._session.proxies = {"http": encoded, "https": encoded}
+            if proxy_ntlm and proxy_user:
+                from requests_ntlm import HttpNtlmAuth
+                self._session.proxies = {"http": proxy, "https": proxy}
+                self._session.auth = HttpNtlmAuth(proxy_user, proxy_password or "")
+            else:
+                encoded = _encode_proxy(proxy, proxy_user, proxy_password)
+                self._session.proxies = {"http": encoded, "https": encoded}
 
     def mapLogRecord(self, record: logging.LogRecord) -> dict:
         return build_log_entry_dict(record)

@@ -29,6 +29,7 @@ class JaylogSettings(BaseSettings):
     log_http_proxy: Optional[str] = None           # e.g. http://proxyapp.example.com:8080
     log_http_proxy_user: Optional[str] = None
     log_http_proxy_password: Optional[str] = None
+    log_http_proxy_ntlm: bool = False              # JAYLOG_LOG_HTTP_PROXY_NTLM=true para proxy Windows/AD
 
     # Screenshot (log_img field) — desativar com JAYLOG_LOG_SCREENSHOT_ENABLED=false
     log_screenshot_enabled: bool = False
