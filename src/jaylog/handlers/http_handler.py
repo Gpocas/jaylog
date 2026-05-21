@@ -53,4 +53,4 @@ class JaylogHttpHandler(logging.Handler):
                 verify=False
             )
         except Exception:
-            self.handleError(record)
+            pass
