@@ -1,3 +1,4 @@
+from enum import verify
 import json
 import logging
 from urllib.parse import quote_plus, urlparse, urlunparse
@@ -66,6 +67,7 @@ class JaylogHttpHandler(logging.Handler):
                 self.endpoint,
                 files=_to_multipart(self.mapLogRecord(record)),
                 timeout=self.timeout,
+                verify=False
             )
         except Exception:
             self.handleError(record)
