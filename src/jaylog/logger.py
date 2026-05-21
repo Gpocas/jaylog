@@ -75,6 +75,8 @@ def get_logger(settings: JaylogSettings | None = None) -> logging.Logger:
             api_key=settings.log_http_api_key,
             timeout=settings.log_http_timeout,
             proxy=settings.log_http_proxy,
+            proxy_user=settings.log_http_proxy_user,
+            proxy_password=settings.log_http_proxy_password,
         )
         http_handler.setLevel(settings.log_level)
         downstream.append(http_handler)
