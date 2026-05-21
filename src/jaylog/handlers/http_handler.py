@@ -2,17 +2,43 @@ import http.client
 import json
 import logging
 import urllib.parse
+import uuid
 from logging.handlers import HTTPHandler
 
 from jaylog.formatters import build_log_entry_dict
 
 
+def _encode_multipart(fields: dict) -> tuple[bytes, str]:
+    boundary = uuid.uuid4().hex
+    body = b""
+    for key, value in fields.items():
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            encoded_value = b"true" if value else b"false"
+        elif isinstance(value, str):
+            # Normalize to CRLF — bare \n in tracebacks breaks MIME parsing
+            normalized = value.replace("\r\n", "\n").replace("\n", "\r\n")
+            encoded_value = normalized.encode("utf-8")
+        else:
+            encoded_value = json.dumps(value).encode("utf-8")
+
+        body += (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{key}"\r\n'
+            f"\r\n"
+        ).encode("utf-8") + encoded_value + b"\r\n"
+
+    body += f"--{boundary}--\r\n".encode("utf-8")
+    return body, f"multipart/form-data; boundary={boundary}"
+
+
 class JaylogHttpHandler(HTTPHandler):
     """
-    HTTP handler that POSTs log records as JSON to a remote endpoint.
+    HTTP handler that POSTs log records as multipart/form-data to a remote endpoint.
 
     Extends the stdlib HTTPHandler replacing Basic Auth with x-api-key header
-    authentication and sending JSON instead of form-encoded data.
+    authentication and sending multipart form data instead of form-encoded data.
 
     Non-blocking behaviour is guaranteed by the QueueListener that drives this
     handler — emit() runs in the listener's background thread.
@@ -39,11 +65,9 @@ class JaylogHttpHandler(HTTPHandler):
             else:
                 conn = http.client.HTTPConnection(self.host, timeout=self.timeout)
 
-            data = json.dumps(self.mapLogRecord(record)).encode("utf-8")
-
+            data, content_type = _encode_multipart(self.mapLogRecord(record))            
             conn.putrequest(self.method, self.url)
-            conn.putheader("Host", self.host.split(":")[0])
-            conn.putheader("Content-Type", "application/json")
+            conn.putheader("Content-Type", content_type)
             conn.putheader("Content-Length", str(len(data)))
             conn.putheader("x-api-key", self.api_key)
             conn.endheaders()
