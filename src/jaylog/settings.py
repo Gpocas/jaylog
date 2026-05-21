@@ -26,9 +26,7 @@ class JaylogSettings(BaseSettings):
     log_http_endpoint: Optional[str] = None
     log_http_api_key: Optional[str] = None
     log_http_timeout: float = 5.0
-    log_http_proxy: Optional[str] = None           # e.g. http://proxyapp.example.com:8080
-    log_http_proxy_user: Optional[str] = None
-    log_http_proxy_password: Optional[str] = None
+    log_http_proxy: Optional[str] = None
 
     # Screenshot (log_img field) — desativar com JAYLOG_LOG_SCREENSHOT_ENABLED=false
     log_screenshot_enabled: bool = False

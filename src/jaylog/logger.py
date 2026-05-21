@@ -1,5 +1,6 @@
 import atexit
 import logging
+import os
 import signal
 from logging.handlers import QueueHandler, QueueListener
 from queue import Queue
@@ -51,6 +52,10 @@ def get_logger(settings: JaylogSettings | None = None) -> logging.Logger:
 
     configure_screenshot(settings.log_screenshot_enabled)
 
+    if settings.log_http_proxy:
+        os.environ.setdefault("HTTP_PROXY", settings.log_http_proxy)
+        os.environ.setdefault("HTTPS_PROXY", settings.log_http_proxy)
+
     if name in _registry:
         return _registry[name][0]
 
@@ -74,9 +79,6 @@ def get_logger(settings: JaylogSettings | None = None) -> logging.Logger:
             endpoint=settings.log_http_endpoint,
             api_key=settings.log_http_api_key,
             timeout=settings.log_http_timeout,
-            proxy=settings.log_http_proxy,
-            proxy_user=settings.log_http_proxy_user,
-            proxy_password=settings.log_http_proxy_password,
         )
         http_handler.setLevel(settings.log_level)
         downstream.append(http_handler)

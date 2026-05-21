@@ -2,7 +2,6 @@ import json
 import logging
 
 import requests
-from requests_ntlm import HttpNtlmAuth
 
 from jaylog.formatters import build_log_entry_dict
 
@@ -35,19 +34,12 @@ class JaylogHttpHandler(logging.Handler):
         endpoint: str,
         api_key: str,
         timeout: float = 5.0,
-        proxy: str | None = None,
-        proxy_user: str | None = None,
-        proxy_password: str | None = None,
     ) -> None:
         super().__init__()
         self.endpoint = endpoint
         self.timeout = timeout
         self._session = requests.Session()
         self._session.headers["x-api-key"] = api_key
-        if proxy:
-            self._session.proxies = {"http": proxy, "https": proxy}
-            if proxy_user:
-                self._session.auth = HttpNtlmAuth(proxy_user, proxy_password or "")
 
     def mapLogRecord(self, record: logging.LogRecord) -> dict:
         return build_log_entry_dict(record)
