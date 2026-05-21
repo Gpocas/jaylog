@@ -1,20 +1,10 @@
-from enum import verify
 import json
 import logging
-from urllib.parse import quote_plus, urlparse, urlunparse
 
 import requests
+from requests_ntlm import HttpNtlmAuth
 
 from jaylog.formatters import build_log_entry_dict
-
-
-def _encode_proxy(proxy: str, user: str | None, password: str | None) -> str:
-    if not user:
-        return proxy
-    parsed = urlparse(proxy)
-    credentials = f"{quote_plus(user)}:{quote_plus(password or '')}"
-    netloc = f"{credentials}@{parsed.netloc}"
-    return urlunparse(parsed._replace(netloc=netloc))
 
 
 def _to_multipart(fields: dict) -> dict:
@@ -48,7 +38,6 @@ class JaylogHttpHandler(logging.Handler):
         proxy: str | None = None,
         proxy_user: str | None = None,
         proxy_password: str | None = None,
-        proxy_ntlm: bool = False,
     ) -> None:
         super().__init__()
         self.endpoint = endpoint
@@ -56,13 +45,9 @@ class JaylogHttpHandler(logging.Handler):
         self._session = requests.Session()
         self._session.headers["x-api-key"] = api_key
         if proxy:
-            if proxy_ntlm and proxy_user:
-                from requests_ntlm import HttpNtlmAuth
-                self._session.proxies = {"http": proxy, "https": proxy}
+            self._session.proxies = {"http": proxy, "https": proxy}
+            if proxy_user:
                 self._session.auth = HttpNtlmAuth(proxy_user, proxy_password or "")
-            else:
-                encoded = _encode_proxy(proxy, proxy_user, proxy_password)
-                self._session.proxies = {"http": encoded, "https": encoded}
 
     def mapLogRecord(self, record: logging.LogRecord) -> dict:
         return build_log_entry_dict(record)
