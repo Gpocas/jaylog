@@ -85,7 +85,9 @@ finally {
 def _get_host_info() -> tuple[str, str, str]:
     hostname = socket.gethostname()
     try:
-        host_ip = socket.gethostbyname(hostname)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            host_ip = s.getsockname()[0]
     except OSError:
         host_ip = "unknown"
     try:
