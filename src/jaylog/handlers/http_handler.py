@@ -1,9 +1,20 @@
 import json
 import logging
+from urllib.parse import quote_plus, urlparse, urlunparse
 
 import requests
 
 from jaylog.formatters import build_log_entry_dict
+
+
+def _encode_proxy(proxy: str) -> str:
+    parsed = urlparse(proxy)
+    if not parsed.password:
+        return proxy
+    netloc = f"{parsed.username}:{quote_plus(parsed.password)}@{parsed.hostname}"
+    if parsed.port:
+        netloc += f":{parsed.port}"
+    return urlunparse(parsed._replace(netloc=netloc))
 
 
 def _to_multipart(fields: dict) -> dict:
@@ -36,7 +47,8 @@ class JaylogHttpHandler(logging.Handler):
         self._session = requests.Session()
         self._session.headers["x-api-key"] = api_key
         if proxy:
-            self._session.proxies = {"http": proxy, "https": proxy}
+            encoded = _encode_proxy(proxy)
+            self._session.proxies = {"http": encoded, "https": encoded}
 
     def mapLogRecord(self, record: logging.LogRecord) -> dict:
         return build_log_entry_dict(record)
