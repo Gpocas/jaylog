@@ -17,7 +17,7 @@ class JaylogSettings(BaseSettings):
     log_level: str = "INFO"
 
     # File handler
-    log_dir: Path = Path("logs")
+    log_dir: Path
     log_max_bytes: int = 5 * 1024 * 1024  # 5 MB
     log_backup_count: int = 5
     log_retention_days: int = 7
