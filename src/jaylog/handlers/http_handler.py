@@ -1,7 +1,9 @@
 import json
 import logging
+import warnings
 
 import requests
+import urllib3
 
 from jaylog.formatters import build_log_entry_dict
 
@@ -46,11 +48,13 @@ class JaylogHttpHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            self._session.post(
-                self.endpoint,
-                files=_to_multipart(self.mapLogRecord(record)),
-                timeout=self.timeout,
-                verify=False
-            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
+                self._session.post(
+                    self.endpoint,
+                    files=_to_multipart(self.mapLogRecord(record)),
+                    timeout=self.timeout,
+                    verify=False,
+                )
         except Exception:
             pass
