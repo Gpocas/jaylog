@@ -13,13 +13,14 @@ def _to_multipart(fields: dict) -> dict:
     for key, value in fields.items():
         if value is None:
             continue
-        if isinstance(value, bool):
-            str_value = "true" if value else "false"
+        if isinstance(value, bytes):
+            result[key] = ("screenshot.jpg", value, "image/jpeg")
+        elif isinstance(value, bool):
+            result[key] = (None, "true" if value else "false")
         elif not isinstance(value, str):
-            str_value = json.dumps(value)
+            result[key] = (None, json.dumps(value))
         else:
-            str_value = value
-        result[key] = (None, str_value)
+            result[key] = (None, value)
     return result
 
 

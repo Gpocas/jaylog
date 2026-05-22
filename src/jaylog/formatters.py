@@ -1,4 +1,3 @@
-import base64
 import getpass
 import io
 import logging
@@ -35,7 +34,7 @@ def configure_screenshot(enabled: bool) -> None:
     _screenshot_enabled = enabled
 
 
-def _capture_screenshot() -> str | None:
+def _capture_screenshot() -> bytes | None:
     if not _screenshot_enabled:
         return None
     try:
@@ -70,7 +69,7 @@ def _capture_screenshot() -> str | None:
                 break
 
         buf.seek(0)
-        return base64.b64encode(buf.read()).decode("ascii")
+        return buf.read()
     except Exception as exc:
         print(f"[jaylog] screenshot: {exc}", file=sys.stderr)
         return None
