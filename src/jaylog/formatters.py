@@ -1,85 +1,11 @@
 import base64
 import getpass
+import io
 import logging
-import re
 import socket
-import subprocess
+import sys
 import traceback
 from datetime import datetime, timezone
-
-_SCREENSHOT_PS1 = r"""
-Add-Type -AssemblyName System.Windows.Forms,System.Drawing
-
-$screen = [System.Windows.Forms.Screen]::PrimaryScreen
-$bmp = New-Object System.Drawing.Bitmap($screen.Bounds.Width, $screen.Bounds.Height)
-$gfx = [System.Drawing.Graphics]::FromImage($bmp)
-
-try {
-    $gfx.CopyFromScreen($screen.Bounds.Location, [System.Drawing.Point]::Empty, $screen.Bounds.Size)
-
-    $targetBytes = 1MB
-    $quality = 90
-    $minQuality = 30
-    $qualityStep = 10
-    $scaleStep = 0.9
-
-    $encoder = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() |
-               Where-Object { $_.MimeType -eq "image/jpeg" }
-    $encParams = New-Object System.Drawing.Imaging.EncoderParameters(1)
-
-    $tempPath = [IO.Path]::GetTempFileName()
-    Remove-Item $tempPath
-    $tempPath = "$tempPath.jpg"
-
-    $currentImage = $bmp
-
-    while ($true) {
-        $encParams.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter(
-            [System.Drawing.Imaging.Encoder]::Quality, [int]$quality)
-
-        $currentImage.Save($tempPath, $encoder, $encParams)
-        $filesize = (Get-Item $tempPath).Length
-
-        if ($filesize -le $targetBytes -or $quality -le $minQuality) {
-            break
-        }
-
-        $quality -= $qualityStep
-        if ($quality -lt $minQuality) { $quality = $minQuality }
-    }
-
-    if ((Get-Item $tempPath).Length -gt $targetBytes) {
-        while ((Get-Item $tempPath).Length -gt $targetBytes) {
-            $newWidth = [int]($currentImage.Width * $scaleStep)
-            $newHeight = [int]($currentImage.Height * $scaleStep)
-            $resized = New-Object System.Drawing.Bitmap $newWidth, $newHeight
-            $g = [System.Drawing.Graphics]::FromImage($resized)
-            $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-            $g.DrawImage($currentImage, 0,0, $newWidth, $newHeight)
-            $g.Dispose()
-            if ($currentImage -ne $bmp) { $currentImage.Dispose() }
-            $currentImage = $resized
-
-            $encParams.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter(
-                [System.Drawing.Imaging.Encoder]::Quality, [int]$quality)
-            $currentImage.Save($tempPath, $encoder, $encParams)
-
-            if ($newWidth -lt 400 -or $newHeight -lt 200) { break }
-        }
-    }
-
-    $timestamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
-    $desktop = [Environment]::GetFolderPath("Desktop")
-    $outPath = Join-Path $desktop "screenshot_$timestamp.jpg"
-    Move-Item -Force $tempPath $outPath
-    Write-Output "Saved: $outPath"
-}
-finally {
-    $gfx.Dispose()
-    $bmp.Dispose()
-    if ($currentImage -and $currentImage -ne $bmp) { $currentImage.Dispose() }
-}
-"""
 
 
 def _get_host_info() -> tuple[str, str, str]:
@@ -101,6 +27,8 @@ _HOST_USERNAME, _HOSTNAME, _HOST_IP = _get_host_info()
 
 _screenshot_enabled: bool = True
 
+_MAX_BYTES = 1 * 1024 * 1024  # 1 MB
+
 
 def configure_screenshot(enabled: bool) -> None:
     global _screenshot_enabled
@@ -111,25 +39,40 @@ def _capture_screenshot() -> str | None:
     if not _screenshot_enabled:
         return None
     try:
-        encoded_cmd = base64.b64encode(_SCREENSHOT_PS1.encode("utf-16-le")).decode("ascii")
-        result = subprocess.run(
-            ["powershell.exe", "-NonInteractive", "-EncodedCommand", encoded_cmd],
-            capture_output=True, text=True, timeout=30,
-        )
-        match = re.search(r"Saved:\s+(.+?\.jpg)", result.stdout)
-        if not match:
-            return None
+        from PIL import ImageGrab
 
-        wsl_path = subprocess.run(
-            ["wslpath", "-u", match.group(1).strip()],
-            capture_output=True, text=True, timeout=5,
-        )
-        if wsl_path.returncode != 0:
-            return None
+        img = ImageGrab.grab()
 
-        img_bytes = open(wsl_path.stdout.strip(), "rb").read()
-        return base64.b64encode(img_bytes).decode("ascii")
-    except Exception:
+        quality = 85
+        scale = 1.0
+        buf = io.BytesIO()
+
+        while True:
+            buf.seek(0)
+            buf.truncate()
+
+            current = img
+            if scale < 1.0:
+                w = int(img.width * scale)
+                h = int(img.height * scale)
+                current = img.resize((w, h))
+
+            current.save(buf, format="JPEG", quality=quality, optimize=True)
+
+            if buf.tell() <= _MAX_BYTES:
+                break
+
+            if quality > 30:
+                quality -= 10
+            elif scale > 0.5:
+                scale -= 0.1
+            else:
+                break
+
+        buf.seek(0)
+        return base64.b64encode(buf.read()).decode("ascii")
+    except Exception as exc:
+        print(f"[jaylog] screenshot: {exc}", file=sys.stderr)
         return None
 
 

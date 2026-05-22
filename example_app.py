@@ -43,6 +43,7 @@ def run():
     cycle = 0
     try:
         while True:
+            time.sleep(5)
             cycle += 1
             logger.debug("Starting cycle %d", cycle)
 
