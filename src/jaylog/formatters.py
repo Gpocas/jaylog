@@ -93,7 +93,7 @@ def build_log_entry_dict(record: logging.LogRecord) -> dict:
         "hostname": _HOSTNAME,
         "ipv4": _HOST_IP,
         "service_path": record.pathname,
-        "log_img": _capture_screenshot(),
+        "log_img": _capture_screenshot() if (record.levelno >= logging.ERROR or is_exception) else None,
     }
 
 
