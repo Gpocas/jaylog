@@ -52,10 +52,6 @@ def get_logger(settings: JaylogSettings | None = None) -> logging.Logger:
 
     configure_screenshot(settings.log_screenshot_enabled)
 
-    if settings.log_http_proxy:
-        os.environ.setdefault("HTTP_PROXY", settings.log_http_proxy)
-        os.environ.setdefault("HTTPS_PROXY", settings.log_http_proxy)
-
     if name in _registry:
         return _registry[name][0]
 

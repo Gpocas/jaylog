@@ -6,7 +6,18 @@ import requests
 import urllib3
 
 from jaylog.formatters import build_log_entry_dict
+from jaylog.settings import JaylogSettings
 
+settings = JaylogSettings()
+
+proxies = {
+    'http': settings.log_http_proxy,
+    'https': settings.log_http_proxy  
+}
+
+session = requests.Session()
+if settings.log_http_proxy:
+    session.proxies.update(proxies)
 
 def _to_multipart(fields: dict) -> dict:
     result = {}
@@ -41,7 +52,7 @@ class JaylogHttpHandler(logging.Handler):
         super().__init__()
         self.endpoint = endpoint
         self.timeout = timeout
-        self._session = requests.Session()
+        self._session = session
         self._session.headers["x-api-key"] = api_key
 
     def mapLogRecord(self, record: logging.LogRecord) -> dict:
