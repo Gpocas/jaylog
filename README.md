@@ -29,7 +29,7 @@ As variáveis usam o prefixo `JAYLOG_`. Podem ser definidas no ambiente do siste
 
 
 > [!IMPORTANT]
-> HTTP_ENDPOINT, HTTP_API_KEY (opcionais) 📢
+> **HTTP_ENDPOINT** e **HTTP_API_KEY** (opcionais) 📢
 >
 > A configuração HTTP_ENDPOINT e HTTP_API_KEY **não** precisa ser feita em ambiente local ou de desenvolvimento 
 > Se apenas uma das duas variaveis LOG_HTTP_ENDPOINT ou LOG_HTTP_API_KEYS for definida, o envio HTTP é ignorado.
