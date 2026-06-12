@@ -1,6 +1,7 @@
 import json
 import logging
 import warnings
+from importlib.metadata import PackageNotFoundError, version
 
 import requests
 import urllib3
@@ -9,6 +10,11 @@ from jaylog.formatters import build_log_entry_dict
 from jaylog.settings import JaylogSettings
 
 settings = JaylogSettings()
+
+try:
+    _JAYLOG_VERSION = version("jaylog")
+except PackageNotFoundError:
+    _JAYLOG_VERSION = "unknown"
 
 proxies = {
     'http': settings.log_http_proxy,
@@ -54,6 +60,7 @@ class JaylogHttpHandler(logging.Handler):
         self.timeout = timeout
         self._session = session
         self._session.headers["x-api-key"] = api_key
+        self._session.headers["x-jaylog-version"] = _JAYLOG_VERSION
 
     def mapLogRecord(self, record: logging.LogRecord) -> dict:
         return build_log_entry_dict(record)
