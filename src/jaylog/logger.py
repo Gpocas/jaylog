@@ -5,6 +5,7 @@ import signal
 from logging.handlers import QueueHandler, QueueListener
 from queue import Queue
 
+from jaylog.filters import ExceptionFlagFilter
 from jaylog.formatters import configure_screenshot
 from jaylog.handlers.file_handler import JaylogFileHandler
 from jaylog.handlers.http_handler import JaylogHttpHandler
@@ -84,6 +85,7 @@ def get_logger(settings: JaylogSettings | None = None) -> logging.Logger:
     # ------------------------------------------------------------------
     queue: Queue = Queue(maxsize=-1)  # unbounded
     queue_handler = QueueHandler(queue)
+    queue_handler.addFilter(ExceptionFlagFilter())
 
     listener = QueueListener(queue, *downstream, respect_handler_level=True)
     listener.start()

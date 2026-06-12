@@ -76,7 +76,7 @@ def _capture_screenshot() -> bytes | None:
 
 
 def build_log_entry_dict(record: logging.LogRecord) -> dict:
-    is_exception = record.exc_info is not None and record.exc_info[0] is not None
+    is_exception = getattr(record, "is_exception", False)
 
     log_message = record.getMessage()
     if is_exception and record.exc_info:
