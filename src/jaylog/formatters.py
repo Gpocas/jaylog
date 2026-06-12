@@ -85,7 +85,7 @@ def build_log_entry_dict(record: logging.LogRecord) -> dict:
 
     return {
         "log_timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
-        "log_level": record.levelname,
+        "log_level": "EXCEPTION" if is_exception else record.levelname,
         "is_exception": is_exception,
         "log_message": log_message,
         "service": record.name,
