@@ -7,11 +7,8 @@ import random
 import time
 
 from jaylog import JaylogSettings, get_logger
-import jaylog
 
-logger = jaylog.get_logger(jaylog.JaylogSettings())
-
-logger = get_logger(JaylogSettings())
+logger = get_logger(JaylogSettings())  # ty:ignore[missing-argument]
 
 PRODUCTS = ["Hamburguer", "Frango", "Carne Bovina", "Suíno", "Salmão"]
 CUSTOMERS = ["JBS USA", "Seara BR", "Swift AU", "Pilgrim's EU", "Friboi MX"]
