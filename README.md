@@ -26,29 +26,76 @@ As variáveis usam o prefixo `JAYLOG_`. Podem ser definidas no ambiente do siste
 | `JAYLOG_LOG_HTTP_PROXY`         | NÃO          | `null`    | URL do proxy para o envio HTTP (ex: `http:\\user:password@server:port`) |
 | `JAYLOG_LOG_SCREENSHOT_ENABLED` | NÃO          | `false`   | Captura screenshot no momento do log (`true`/`false`, apenas Windows)   |
 
-> [!IMPORTANT]
-> **HTTP_ENDPOINT** e **HTTP_API_KEY** (opcionais) 📢
->
-> - A configuração **HTTP_ENDPOINT** e **HTTP_API_KEY** não precisa ser feita em ambiente local ou de desenvolvimento
-> - Se apenas uma das duas variaveis **HTTP_ENDPOINT** ou **HTTP_API_KEYS** for definida, o envio HTTP é ignorado.
 
-## Uso
+## Uso Simples
 
+__*.env.logging*__
+```env
+JAYLOG_APP_NAME=meu-bot
+JAYLOG_LOG_DIR=C:\logs
+```
+__*main.py*__
 ```python
 from jaylog import JaylogSettings, get_logger
 
 logger = get_logger(JaylogSettings())
 
 logger.info("Mensagem de log")
-logger.error("Erro ao processar", exc_info=True)
+logger.error("Erro ao processar")
 ```
 
-## Exemplo de .env
 
+## Alterando Caminho padrão do .env
+
+__*development.env*__
 ```env
 JAYLOG_APP_NAME=meu-bot
 JAYLOG_LOG_DIR=C:\logs
-JAYLOG_LOG_HTTP_ENDPOINT=https://meu-backend.com/logs/add # opcional
-JAYLOG_LOG_HTTP_API_KEY=minha-chave # opcional
-JAYLOG_LOG_HTTP_PROXY=http://proxy.empresa.com:8080 # opcional
 ```
+
+__*main.py*__
+```python
+from jaylog import JaylogSettings, get_logger
+
+
+settings = JaylogSettings(_env_file='development.env')
+logger = get_logger(settings)
+
+logger.info("Mensagem de log")
+logger.error("Erro ao processar")
+```
+
+
+## Preparando para produção
+
+
+> [!IMPORTANT]
+> **HTTP_ENDPOINT** e **HTTP_API_KEY** (opcionais) 📢
+>
+> - A configuração **HTTP_ENDPOINT** e **HTTP_API_KEY** não precisa ser feita em ambiente local ou de desenvolvimento
+> - Se apenas uma das duas variaveis **HTTP_ENDPOINT** ou **HTTP_API_KEYS** for definida, o envio HTTP é ignorado.
+> - Caso a aplicação execute em um ambiente que usa um proxy ntlm, defina `JAYLOG_LOG_HTTP_PROXY`
+
+
+__*prodution.env*__
+```env
+JAYLOG_APP_NAME=mlleu-bot
+JAYLOG_LOG_DIR=C:\logs
+JAYLOG_LOG_HTTP_ENDPOINT=https://meu-backend.com/logs/add
+JAYLOG_LOG_HTTP_API_KEY=minha-chave
+JAYLOG_LOG_HTTP_PROXY=http://username:password@proxy.com:8080
+```
+
+__*main.py*__
+```python
+from jaylog import JaylogSettings, get_logger
+
+
+settings = JaylogSettings(_env_file='prodution.env', _secrets_dir='/caminho/secrets/')
+logger = get_logger(settings)
+
+logger.info("Mensagem de log")
+logger.error("Erro ao processar")
+```
+
+

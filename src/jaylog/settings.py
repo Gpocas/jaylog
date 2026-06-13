@@ -10,7 +10,7 @@ from jaylog.formatters import _HOSTNAME, _HOST_USERNAME
 class JaylogSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="JAYLOG_",
-        env_file=('.env', '.env.loggig'),
+        env_file=('.env.logging', '.env'),
         env_file_encoding='utf-8',
         secrets_dir='secrets',
         extra="ignore"
