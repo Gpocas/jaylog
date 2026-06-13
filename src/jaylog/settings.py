@@ -8,16 +8,20 @@ from jaylog.formatters import _HOSTNAME, _HOST_USERNAME
 
 
 class JaylogSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="JAYLOG_", env_file=(".env", ".env.logging"), extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="JAYLOG_",
+        env_file=('.env', '.env.loggig'),
+        env_file_encoding='utf-8',
+        secrets_dir='secrets',
+        extra="ignore"
+    )
 
     # App identity
-    app_name: str = "app"
-
-    # Log level
-    log_level: str = "INFO"
+    app_name: str
+    log_dir: Path
 
     # File handler
-    log_dir: Path
+    log_level: str = "INFO"
     log_max_bytes: int = 5 * 1024 * 1024  # 5 MB
     log_backup_count: int = 5
     log_retention_days: int = 7
