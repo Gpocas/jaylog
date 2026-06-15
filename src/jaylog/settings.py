@@ -20,6 +20,8 @@ class JaylogSettings(BaseSettings):
     app_name: str
     log_dir: Path
 
+    secrets_dirs: Path | None = None
+
     # File handler
     log_level: str = "INFO"
     log_max_bytes: int = 5 * 1024 * 1024  # 5 MB
@@ -46,3 +48,11 @@ class JaylogSettings(BaseSettings):
     @property
     def log_filename(self) -> Path:
         return Path(f"{self.app_name}_{_HOSTNAME}_{_HOST_USERNAME}.log")
+
+    def reload_secrets(self):
+
+        if self.secrets_dirs:
+            if not self.secrets_dirs.exists() or not self.secrets_dirs.is_dir:
+                raise ValueError('SECRETS_DIR is not valid directory')
+                
+        return JaylogSettings(_secrets_dirs=self.secrets_dirs)  # ty:ignore[missing-argument, unknown-argument]
