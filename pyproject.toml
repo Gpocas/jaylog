@@ -6,6 +6,18 @@ readme = "README.md"
 authors = [
     { name = "Gpocas", email = "gpocas01@gmail.com" }
 ]
+
+classifiers = [
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Natural Language :: Portuguese (Brazilian)",
+    "Development Status :: 5 - Production/Stable",
+]
+
+[project.urls]
+repository = "https://github.com/Gpocas/jaylog"
+"Bug Tracker" = "https://github.com/Gpocas/jaylog/issues"
+
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "pydantic>=2.0,<3.0",
