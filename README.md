@@ -12,7 +12,7 @@ pip install -U --no-cache-dir jaylog
 
 As variáveis usam o prefixo `JAYLOG_`. Podem ser definidas no ambiente do sistema ou em um arquivo `.env` / `.env.logging` na raiz do projeto.
 
-| Variável                        | obrigatorio? | Padrão    | Descrição                                                               |
+| Variável                        | obrigatório? | Padrão    | Descrição                                                               |
 | ------------------------------- | ------------ | --------- | ----------------------------------------------------------------------- |
 | `JAYLOG_APP_NAME`               | SIM          | `null`    | Nome do serviço/bot (usado no nome do arquivo de log)                   |
 | `JAYLOG_LOG_DIR`                | SIM          | `null`    | Caminho do diretório onde os arquivos de log serão salvos               |
@@ -27,7 +27,11 @@ As variáveis usam o prefixo `JAYLOG_`. Podem ser definidas no ambiente do siste
 | `JAYLOG_LOG_SCREENSHOT_ENABLED` | NÃO          | `false`   | Captura screenshot no momento do log (`true`/`false`, apenas Windows)   |
 
 
-## Uso Simples
+## Como usar?
+
+Existem alguns cenários diferentes onde a utilização desse lib pode mudar, abaixo estão os cenários mapeados e como realizar configuração para cada um.
+
+## Arquivo único
 
 __*.env.logging*__
 ```env
@@ -40,9 +44,42 @@ from jaylog import JaylogSettings, get_logger
 
 logger = get_logger(JaylogSettings())
 
-logger.info("Mensagem de log")
-logger.error("Erro ao processar")
+logger.info("Arquivo Único")
 ```
+
+## Múltiplos Arquivos
+
+__*.env.logging*__
+```env
+JAYLOG_APP_NAME=meu-bot
+JAYLOG_LOG_DIR=C:\logs
+```
+
+__*main.py*__
+```python
+from jaylog import JaylogSettings, get_logger, configure
+from parse import parse_csv
+
+jaylog_settings = JaylogSettings()
+configure(jaylog_settings)
+
+logger = get_logger()
+
+logger.info("Múltiplos Arquivos - main.py")
+parse_csv()
+```
+
+
+__*parse.py*__
+```python
+from jaylog import get_logger
+
+logger = get_logger()
+
+def parse_csv():
+    logger.info("Múltiplos Arquivos - parse.py")
+```
+
 
 
 ## Alterando Caminho padrão do .env
@@ -57,45 +94,74 @@ __*main.py*__
 ```python
 from jaylog import JaylogSettings, get_logger
 
-
 settings = JaylogSettings(_env_file='development.env')
 logger = get_logger(settings)
 
-logger.info("Mensagem de log")
-logger.error("Erro ao processar")
+logger.info("Alterando Caminho padrão do .env")
 ```
 
 
 ## Preparando para produção
 
-
 > [!IMPORTANT]
 > **HTTP_ENDPOINT** e **HTTP_API_KEY** (opcionais) 📢
 >
 > - A configuração **HTTP_ENDPOINT** e **HTTP_API_KEY** não precisa ser feita em ambiente local ou de desenvolvimento
-> - Se apenas uma das duas variaveis **HTTP_ENDPOINT** ou **HTTP_API_KEYS** for definida, o envio HTTP é ignorado.
+> - Se apenas uma das duas variáveis **HTTP_ENDPOINT** ou **HTTP_API_KEYS** for definida, o envio HTTP é ignorado.
 > - Caso a aplicação execute em um ambiente que usa um proxy ntlm, defina `JAYLOG_LOG_HTTP_PROXY`
 
 
+> [!TIP]
+> Em produção é recomendado usar um diretório específico para suas secrets, para que você possa reutilizar entre diferentes aplicações.
+
+### Cenário 1 (secrets definido hardcode no código):
+
 __*prodution.env*__
 ```env
-JAYLOG_APP_NAME=mlleu-bot
+JAYLOG_APP_NAME=meu-bot
 JAYLOG_LOG_DIR=C:\logs
-JAYLOG_LOG_HTTP_ENDPOINT=https://meu-backend.com/logs/add
-JAYLOG_LOG_HTTP_API_KEY=minha-chave
-JAYLOG_LOG_HTTP_PROXY=http://username:password@proxy.com:8080
+```
+```bash
+$ pwd
+/foo/bar/secrets
+
+$ ls -la
+JAYLOG_LOG_HTTP_ENDPOIN
+JAYLOG_LOG_HTTP_API_KEY
+JAYLOG_LOG_HTTP_PROXY
 ```
 
 __*main.py*__
 ```python
 from jaylog import JaylogSettings, get_logger
 
-
-settings = JaylogSettings(_env_file='prodution.env', _secrets_dir='/caminho/secrets/')
+settings = JaylogSettings(
+    _env_file='prodution.env',
+    _secrets_dir='/foo/bar/secrets/'
+)
 logger = get_logger(settings)
 
 logger.info("Mensagem de log")
-logger.error("Erro ao processar")
 ```
 
+### Cenário 2 (secrets definido no .env):
 
+__*prodution.env*__
+```env
+JAYLOG_APP_NAME=meu-bot
+JAYLOG_LOG_DIR=C:\logs
+JAYLOG_SECRETS_DIRS=/foo/bar/secrets
+```
+
+__*main.py*__
+```python
+from jaylog import JaylogSettings, get_logger
+
+settings = JaylogSettings(
+    _env_file='prodution.env',
+    _secrets_dir='/foo/bar/secrets/'
+).reload_secrets() # nesse caso é necessário usar a função de classe `reload_secrets` para carregar a secrets do diretório
+
+logger = get_logger(settings)
+
+logger.info("Mensagem de log")
