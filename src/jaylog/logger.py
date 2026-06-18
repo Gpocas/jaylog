@@ -14,6 +14,14 @@ from jaylog.settings import JaylogSettings
 # Registry: name -> (logger, listener) so callers can shut down cleanly
 _registry: dict[str, tuple[logging.Logger, QueueListener]] = {}
 _shutdown_registered = False
+_default_settings: JaylogSettings | None = None
+
+
+def configure(settings: JaylogSettings) -> None:
+    """Configure as settings padrão globais usadas por get_logger()."""
+    global _default_settings
+    _default_settings = settings
+    get_logger(settings)
 
 
 def _register_shutdown_hooks() -> None:
@@ -47,7 +55,7 @@ def get_logger(settings: JaylogSettings | None = None) -> logging.Logger:
     calling thread.
     """
     if settings is None:
-        settings = JaylogSettings()
+        settings = _default_settings or JaylogSettings()
 
     name = settings.app_name
 

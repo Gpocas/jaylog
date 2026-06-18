@@ -5,7 +5,7 @@ Biblioteca de logging para Python com rotação de arquivos e envio HTTP para um
 ## Instalação
 
 ```bash
-pip install -U --no-cache-dir git+https://github.com/Gpocas/jaylog.git
+pip install -U --no-cache-dir jaylog
 ```
 
 ## Variáveis de ambiente
