@@ -14,10 +14,6 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
 ]
 
-[project.urls]
-repository = "https://github.com/Gpocas/jaylog"
-"Bug Tracker" = "https://github.com/Gpocas/jaylog/issues"
-
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "pydantic>=2.0,<3.0",
@@ -25,6 +21,10 @@ dependencies = [
     "requests>=2.32,<3.0",
     "pillow>=11.0,<13.0",
 ]
+
+[project.urls]
+repository = "https://github.com/Gpocas/jaylog"
+"Bug Tracker" = "https://github.com/Gpocas/jaylog/issues"
 
 [build-system]
 requires = ["uv_build>=0.10.8,<0.11.0"]
