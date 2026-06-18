@@ -157,10 +157,9 @@ __*main.py*__
 ```python
 from jaylog import JaylogSettings, get_logger
 
-settings = JaylogSettings(
-    _env_file='prodution.env',
-    _secrets_dir='/foo/bar/secrets/'
-).reload_secrets() # nesse caso é necessário usar a função de classe `reload_secrets` para carregar a secrets do diretório
+# nesse caso é necessário usar a função de classe `reload_secrets`
+# pois o diretorio dos secrets foi passado via variável de ambiente
+settings = JaylogSettings(_env_file='prodution.env').reload_secrets() 
 
 logger = get_logger(settings)
 
