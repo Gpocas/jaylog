@@ -150,7 +150,7 @@ __*prodution.env*__
 ```env
 JAYLOG_APP_NAME=meu-bot
 JAYLOG_LOG_DIR=C:\logs
-JAYLOG_SECRETS_DIRS=/foo/bar/secrets
+JAYLOG_SECRETS_DIR=/foo/bar/secrets
 ```
 
 __*main.py*__
