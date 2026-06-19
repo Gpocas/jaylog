@@ -1,6 +1,6 @@
 [project]
 name = "jaylog"
-version = "0.1.12"
+version = "0.1.13"
 description = "Customized Python logging library with file rotation and HTTP forwarding"
 readme = "README.md"
 authors = [
