@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 import warnings
@@ -7,23 +8,13 @@ import requests
 import urllib3
 
 from jaylog.formatters import build_log_entry_dict
-from jaylog.settings import JaylogSettings
-
-settings = JaylogSettings()
 
 try:
     _JAYLOG_VERSION = version("jaylog")
 except PackageNotFoundError:
     _JAYLOG_VERSION = "unknown"
 
-proxies = {
-    'http': settings.log_http_proxy,
-    'https': settings.log_http_proxy  
-}
 
-session = requests.Session()
-if settings.log_http_proxy:
-    session.proxies.update(proxies)
 
 def _to_multipart(fields: dict) -> dict:
     result = {}
@@ -54,11 +45,13 @@ class JaylogHttpHandler(logging.Handler):
         endpoint: str,
         api_key: str,
         timeout: float = 5.0,
+        proxy: str | None = None,
     ) -> None:
         super().__init__()
         self.endpoint = endpoint
         self.timeout = timeout
-        self._session = session
+        self.proxy = {'http': proxy, 'https': proxy}
+        self._session = requests.Session()
         self._session.headers["x-api-key"] = api_key
         self._session.headers["x-jaylog-version"] = _JAYLOG_VERSION
 
@@ -67,13 +60,19 @@ class JaylogHttpHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
+            if self.proxy:
+                self._session.proxies.update(self.proxy)
+            
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
-                self._session.post(
+                response = self._session.post(
                     self.endpoint,
                     files=_to_multipart(self.mapLogRecord(record)),
                     timeout=self.timeout,
                     verify=False,
                 )
+                if os.getenv('JAYLOG_HTTP_DEBUG') == 1:
+                    print(response.status_code)
+                    print(response.content)
         except Exception:
             pass

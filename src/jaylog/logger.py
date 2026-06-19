@@ -83,6 +83,7 @@ def get_logger(settings: JaylogSettings | None = None) -> logging.Logger:
         http_handler = JaylogHttpHandler(
             endpoint=settings.log_http_endpoint,
             api_key=settings.log_http_api_key,
+            proxy=settings.log_http_proxy,
             timeout=settings.log_http_timeout,
         )
         http_handler.setLevel(settings.log_level)
