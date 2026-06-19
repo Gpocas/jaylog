@@ -16,6 +16,12 @@ class JaylogSettings(BaseSettings):
         extra="ignore"
     )
 
+    _env_file: str | tuple | None = None
+
+    def __init__(self, _env_file=None, **data):
+        super().__init__(_env_file=_env_file, **data)
+        object.__setattr__(self, '_env_file', _env_file)
+
     # App identity
     app_name: str
     log_dir: Path
@@ -54,6 +60,7 @@ class JaylogSettings(BaseSettings):
             if not self.secrets_dir.exists() or not self.secrets_dir.is_dir:
                 raise ValueError('SECRETS_DIR is not valid directory')
                 
+        
         return JaylogSettings(
-            _env_file=self.model_config.get('env_file'),  # ty:ignore[unresolved-attribute, unknown-argument]
-            _secrets_dir=self.secrets_dir)  # ty:ignore[missing-argument, unknown-argument]
+            _env_file=self._env_file, 
+            _secrets_dir=self.secrets_dir)
