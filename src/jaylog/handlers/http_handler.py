@@ -71,7 +71,7 @@ class JaylogHttpHandler(logging.Handler):
                     timeout=self.timeout,
                     verify=False,
                 )
-                if os.getenv('JAYLOG_HTTP_DEBUG') == 1:
+                if os.getenv('JAYLOG_HTTP_DEBUG') == '1':
                     print(response.status_code)
                     print(response.content)
         except Exception:
