@@ -1,6 +1,5 @@
 import atexit
 import logging
-import os
 import signal
 from logging.handlers import QueueHandler, QueueListener
 from queue import Queue
@@ -21,7 +20,6 @@ def configure(settings: JaylogSettings) -> None:
     """Configure as settings padrão globais usadas por get_logger()."""
     global _default_settings
     _default_settings = settings
-    get_logger(settings)
 
 
 def _register_shutdown_hooks() -> None:
@@ -40,7 +38,7 @@ def _register_shutdown_hooks() -> None:
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
 
-def get_logger(settings: JaylogSettings | None = None) -> logging.Logger:
+def get_logger() -> logging.Logger:
     """
     Return a configured logger.
 
@@ -54,8 +52,10 @@ def get_logger(settings: JaylogSettings | None = None) -> logging.Logger:
     The QueueListener runs in a background thread so `emit()` never blocks the
     calling thread.
     """
-    if settings is None:
-        settings = _default_settings or JaylogSettings()
+    if _default_settings is None:
+        settings = JaylogSettings()  # ty:ignore[missing-argument]
+    else:
+        settings = _default_settings
 
     name = settings.app_name
 

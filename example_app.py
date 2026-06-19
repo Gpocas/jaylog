@@ -9,7 +9,7 @@ import time
 from jaylog import JaylogSettings, get_logger
 
 settings = JaylogSettings() # ty:ignore[missing-argument]
-logger = get_logger(settings) 
+logger = get_logger() 
 
 PRODUCTS = ["Hamburguer", "Frango", "Carne Bovina", "Suíno", "Salmão"]
 CUSTOMERS = ["JBS USA", "Seara BR", "Swift AU", "Pilgrim's EU", "Friboi MX"]
