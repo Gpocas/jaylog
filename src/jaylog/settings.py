@@ -55,5 +55,5 @@ class JaylogSettings(BaseSettings):
                 raise ValueError('SECRETS_DIR is not valid directory')
                 
         return JaylogSettings(
-            _env_file=self.model_config.env_file,  # ty:ignore[unresolved-attribute, unknown-argument]
+            _env_file=self.model_config.get('env_file'),  # ty:ignore[unresolved-attribute, unknown-argument]
             _secrets_dir=self.secrets_dir)  # ty:ignore[missing-argument, unknown-argument]
