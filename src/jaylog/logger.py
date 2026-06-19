@@ -20,6 +20,7 @@ def configure(settings: JaylogSettings) -> None:
     """Configure as settings padrão globais usadas por get_logger()."""
     global _default_settings
     _default_settings = settings
+    shutdown()
 
 
 def _register_shutdown_hooks() -> None:
