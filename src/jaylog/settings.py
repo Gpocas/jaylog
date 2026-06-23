@@ -19,6 +19,7 @@ class JaylogSettings(BaseSettings):
     _env_file: str | tuple | None = None
 
     def __init__(self, _env_file=None, **data):
+        _env_file = self.model_config.get('env_file') if _env_file is None else _env_file
         super().__init__(_env_file=_env_file, **data)
         object.__setattr__(self, '_env_file', _env_file)
 
