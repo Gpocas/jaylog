@@ -54,9 +54,13 @@ def get_logger() -> logging.Logger:
     calling thread.
     """
     if _default_settings is None:
-        settings = JaylogSettings()  # ty:ignore[missing-argument]
-    else:
-        settings = _default_settings
+        raise Exception(
+            'Não é possivel retornar uma instancia de logger com _default_settings=None\n'
+            'use jaylog.configure() antes de jaylog.get_logger()'
+        )
+
+
+    settings = _default_settings
 
     name = settings.app_name
 

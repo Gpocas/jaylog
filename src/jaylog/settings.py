@@ -17,11 +17,17 @@ class JaylogSettings(BaseSettings):
     )
 
     _env_file: str | tuple | None = None
+    _secrets_dir: str | None = None
 
-    def __init__(self, _env_file=None, **data):
-        _env_file = self.model_config.get('env_file') if _env_file is None else _env_file
-        super().__init__(_env_file=_env_file, **data)
+    def __init__(
+        self,
+        _env_file=model_config.get('env_file'),
+        _secrets_dir=model_config.get('secrets_dir'),
+        **data
+    ):
+        super().__init__(_env_file=_env_file, _secrets_dir=_secrets_dir, **data)
         object.__setattr__(self, '_env_file', _env_file)
+        object.__setattr__(self, '_secrets_dir', _secrets_dir)
 
     # App identity
     app_name: str
@@ -60,6 +66,12 @@ class JaylogSettings(BaseSettings):
         if self.secrets_dir:
             if not self.secrets_dir.exists() or not self.secrets_dir.is_dir:
                 raise ValueError('SECRETS_DIR is not valid directory')
+
+        elif self._secrets_dir != self.model_config.get('secrets_dir'):
+            raise SyntaxError(
+                'Não é possivel usar `reload_secrets` caso o valor de _secrets_dir foi sobrescrito'
+            )
+            
                 
         
         return JaylogSettings(
