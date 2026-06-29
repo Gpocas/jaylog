@@ -104,7 +104,7 @@ wheels = [
 
 [[package]]
 name = "jaylog"
-version = "0.2.2"
+version = "0.2.4"
 source = { editable = "." }
 dependencies = [
     { name = "pillow" },
