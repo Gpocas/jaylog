@@ -106,6 +106,7 @@ def get_logger(name: str | None = None) -> logging.Logger:
     # Build the actual (downstream) handlers
     # ------------------------------------------------------------------
     downstream: list[logging.Handler] = []
+    show_service = len(_settings_registry) > 1
 
     if settings.log_dir is not None:
         log_path = settings.log_dir / settings.log_filename
@@ -114,12 +115,13 @@ def get_logger(name: str | None = None) -> logging.Logger:
             max_bytes=settings.log_max_bytes,
             backup_count=settings.log_backup_count,
             retention_days=settings.log_retention_days,
+            show_service=show_service,
         )
         file_handler.setLevel(settings.log_level)
         downstream.append(file_handler)
 
     if settings.log_console_enabled:
-        console_handler = JaylogConsoleHandler()
+        console_handler = JaylogConsoleHandler(show_service=show_service)
         console_handler.setLevel(settings.log_level)
         downstream.append(console_handler)
 

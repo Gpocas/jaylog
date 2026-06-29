@@ -19,6 +19,7 @@ class JaylogFileHandler(RotatingFileHandler):
         backup_count: int = 20,
         retention_days: int = 7,
         encoding: str = "utf-8",
+        show_service: bool = True,
     ) -> None:
         filename.parent.mkdir(parents=True, exist_ok=True)
         super().__init__(
@@ -28,7 +29,7 @@ class JaylogFileHandler(RotatingFileHandler):
             encoding=encoding,
         )
         self.retention_days = retention_days
-        self.setFormatter(PlainTextFormatter())
+        self.setFormatter(PlainTextFormatter(show_service=show_service))
 
     def doRollover(self) -> None:
         super().doRollover()

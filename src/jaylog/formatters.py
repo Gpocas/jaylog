@@ -100,15 +100,18 @@ def build_log_entry_dict(record: logging.LogRecord) -> dict:
 class PlainTextFormatter(logging.Formatter):
     """Human-readable single-line formatter for .log files."""
 
+    def __init__(self, show_service: bool = True) -> None:
+        super().__init__()
+        self.show_service = show_service
+
     def format(self, record: logging.LogRecord) -> str:
         entry = build_log_entry_dict(record)
         log_timestamp = datetime.fromisoformat(entry['log_timestamp']).strftime('%d/%m/%Y %X')
         log_level = f'[{entry["log_level"]}]'
-        service = f'[{entry["service"]}]'
-        line = (
+        service_segment = f'[{entry["service"]}] | ' if self.show_service else ''
+        return (
             f'{log_timestamp} '
             f'{log_level.ljust(11)} | '
-            f'{service} | '
+            f'{service_segment}'
             f"{entry['log_message']}"
         )
-        return line
