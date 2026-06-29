@@ -6,10 +6,17 @@ Press Ctrl+C to stop gracefully.
 import random
 import time
 
-from jaylog import JaylogSettings, get_logger
+from jaylog import JaylogSettings, configure, get_logger
 
-settings = JaylogSettings() # ty:ignore[missing-argument]
-logger = get_logger() 
+# Dois loggers nomeados com configurações independentes. O log_dir e demais
+# campos vêm do .env; aqui sobrescrevemos apenas o app_name de cada um.
+settings_order = JaylogSettings(app_name="ORDER-PROCESSOR")
+settings_billing = JaylogSettings(app_name="BILLING")
+configure([settings_order, settings_billing])
+
+
+logger = get_logger("ORDER-PROCESSOR")  # ou get_logger() — pega o primeiro registrado
+billing_logger = get_logger("BILLING")
 
 PRODUCTS = ["Hamburguer", "Frango", "Carne Bovina", "Suíno", "Salmão"]
 CUSTOMERS = ["JBS USA", "Seara BR", "Swift AU", "Pilgrim's EU", "Friboi MX"]
@@ -64,6 +71,12 @@ def run():
                         logger.warning(
                             "High-value delivery completed: %s → %s",
                             order["order_id"],
+                            order["customer"],
+                        )
+                        billing_logger.info(
+                            "Invoice issued for %s | %.1ft | customer=%s",
+                            order["order_id"],
+                            order["qty_tons"],
                             order["customer"],
                         )
 

@@ -13,14 +13,39 @@ from jaylog.settings import JaylogSettings
 # Registry: name -> (logger, listener) so callers can shut down cleanly
 _registry: dict[str, tuple[logging.Logger, QueueListener]] = {}
 _shutdown_registered = False
-_default_settings: JaylogSettings | None = None
+# name (== app_name) -> settings registrada via configure()
+_settings_registry: dict[str, JaylogSettings] = {}
 
 
-def configure(settings: JaylogSettings) -> None:
-    """Configure as settings padrão globais usadas por get_logger()."""
-    global _default_settings
-    _default_settings = settings
+def configure(settings: JaylogSettings | list[JaylogSettings]) -> None:
+    """
+    Registra uma ou mais configurações de logger.
+
+    Aceita uma única ``JaylogSettings`` ou uma lista delas. Cada configuração é
+    registrada sob o seu próprio ``app_name``, permitindo vários loggers com
+    configurações diferentes no mesmo projeto::
+
+        configure(settings_order)
+        configure([settings_order, settings_billing])
+
+    Cada chamada é a "fonte da verdade" do conjunto de loggers: derruba os
+    loggers registrados anteriormente e registra apenas os informados aqui.
+    Levanta ``ValueError`` se a lista contiver ``app_name`` duplicado.
+    """
+    items = [settings] if isinstance(settings, JaylogSettings) else list(settings)
+
+    seen: set[str] = set()
+    for item in items:
+        if item.app_name in seen:
+            raise ValueError(
+                f"app_name duplicado em configure(): '{item.app_name}'"
+            )
+        seen.add(item.app_name)
+
     shutdown()
+    _settings_registry.clear()
+    for item in items:
+        _settings_registry[item.app_name] = item
 
 
 def _register_shutdown_hooks() -> None:
@@ -39,13 +64,14 @@ def _register_shutdown_hooks() -> None:
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
 
-def get_logger() -> logging.Logger:
+def get_logger(name: str | None = None) -> logging.Logger:
     """
     Return a configured logger.
 
-    The logger name is read from JAYLOG_LOGGER_NAME (default: "jaylog").
-    Calling this multiple times with the same logger name returns the **same**
-    logger without re-attaching handlers.
+    O ``name`` deve ser exatamente o ``app_name`` de uma configuração registrada
+    via ``configure()``. Quando omitido, retorna o logger da **primeira**
+    configuração registrada. Chamadas repetidas com o mesmo nome retornam o
+    **mesmo** logger, sem re-anexar handlers.
 
     Architecture:
         logger  →  QueueHandler  →  Queue  →  QueueListener  →  [FileHandler, HttpHandler?]
@@ -53,16 +79,22 @@ def get_logger() -> logging.Logger:
     The QueueListener runs in a background thread so `emit()` never blocks the
     calling thread.
     """
-    if _default_settings is None:
+    if not _settings_registry:
         raise Exception(
-            'Não é possivel retornar uma instancia de logger com _default_settings=None\n'
+            'Não é possivel retornar uma instancia de logger sem configuração\n'
             'use jaylog.configure() antes de jaylog.get_logger()'
         )
 
+    if name is None:
+        name = next(iter(_settings_registry))
+    elif name not in _settings_registry:
+        disponiveis = ', '.join(_settings_registry) or '(nenhum)'
+        raise KeyError(
+            f"Nenhuma configuração registrada para '{name}'. "
+            f"Nomes disponíveis: {disponiveis}"
+        )
 
-    settings = _default_settings
-
-    name = settings.app_name
+    settings = _settings_registry[name]
 
     configure_screenshot(settings.log_screenshot_enabled)
 
