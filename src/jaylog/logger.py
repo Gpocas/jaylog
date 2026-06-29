@@ -106,15 +106,16 @@ def get_logger(name: str | None = None) -> logging.Logger:
     # ------------------------------------------------------------------
     downstream: list[logging.Handler] = []
 
-    log_path = settings.log_dir / settings.log_filename
-    file_handler = JaylogFileHandler(
-        filename=log_path,
-        max_bytes=settings.log_max_bytes,
-        backup_count=settings.log_backup_count,
-        retention_days=settings.log_retention_days,
-    )
-    file_handler.setLevel(settings.log_level)
-    downstream.append(file_handler)
+    if settings.log_dir is not None:
+        log_path = settings.log_dir / settings.log_filename
+        file_handler = JaylogFileHandler(
+            filename=log_path,
+            max_bytes=settings.log_max_bytes,
+            backup_count=settings.log_backup_count,
+            retention_days=settings.log_retention_days,
+        )
+        file_handler.setLevel(settings.log_level)
+        downstream.append(file_handler)
 
     if settings.log_http_endpoint and settings.log_http_api_key:
         http_handler = JaylogHttpHandler(

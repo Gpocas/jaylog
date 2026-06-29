@@ -31,7 +31,7 @@ class JaylogSettings(BaseSettings):
 
     # App identity
     app_name: str
-    log_dir: Path
+    log_dir: Path | None = None
 
     secrets_dir: Path | None = None
 
@@ -52,14 +52,16 @@ class JaylogSettings(BaseSettings):
 
     @field_validator("log_dir", mode="after")
     @classmethod
-    def validate_log_dir(cls, v: Path) -> Path:
-        if v.exists() and not v.is_dir():
+    def validate_log_dir(cls, v: Path | None) -> Path | None:
+        if v is not None and v.exists() and not v.is_dir():
             raise ValueError(f"JAYLOG_LOG_DIR '{v}' exists but is not a directory")
         return v
 
     @computed_field
     @property
-    def log_filename(self) -> Path:
+    def log_filename(self) -> Path | None:
+        if self.log_dir is None:
+            return None
         return Path(f"{self.app_name}_{_HOSTNAME}_{_HOST_USERNAME}.log")
 
     def reload_secrets(self):
