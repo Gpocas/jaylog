@@ -6,6 +6,7 @@ from queue import Queue
 
 from jaylog.filters import ExceptionFlagFilter
 from jaylog.formatters import configure_screenshot
+from jaylog.handlers.console_handler import JaylogConsoleHandler
 from jaylog.handlers.file_handler import JaylogFileHandler
 from jaylog.handlers.http_handler import JaylogHttpHandler
 from jaylog.settings import JaylogSettings
@@ -116,6 +117,11 @@ def get_logger(name: str | None = None) -> logging.Logger:
         )
         file_handler.setLevel(settings.log_level)
         downstream.append(file_handler)
+
+    if settings.log_console_enabled:
+        console_handler = JaylogConsoleHandler()
+        console_handler.setLevel(settings.log_level)
+        downstream.append(console_handler)
 
     if settings.log_http_endpoint and settings.log_http_api_key:
         http_handler = JaylogHttpHandler(

@@ -47,6 +47,9 @@ class JaylogSettings(BaseSettings):
     log_http_timeout: float = 5.0
     log_http_proxy: Optional[str] = None
 
+    # Console handler — desativar com JAYLOG_LOG_CONSOLE_ENABLED=false
+    log_console_enabled: bool = True
+
     # Screenshot (log_img field) — desativar com JAYLOG_LOG_SCREENSHOT_ENABLED=false
     log_screenshot_enabled: bool = False
 

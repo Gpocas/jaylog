@@ -104,9 +104,11 @@ class PlainTextFormatter(logging.Formatter):
         entry = build_log_entry_dict(record)
         log_timestamp = datetime.fromisoformat(entry['log_timestamp']).strftime('%d/%m/%Y %X')
         log_level = f'[{entry["log_level"]}]'
+        service = f'[{entry["service"]}]'
         line = (
             f'{log_timestamp} '
-            f'{log_level.ljust(11)}'
-            f" | {entry['log_message']}"
+            f'{log_level.ljust(11)} | '
+            f'{service} | '
+            f"{entry['log_message']}"
         )
         return line
