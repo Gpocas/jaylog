@@ -29,7 +29,7 @@ class ConsoleFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         entry = build_log_entry_dict(record)
-        log_timestamp = datetime.fromisoformat(entry["log_timestamp"]).strftime("%d/%m/%Y %X")
+        log_timestamp = datetime.fromisoformat(entry["log_timestamp"]).astimezone().strftime("%d/%m/%Y %X")
         log_level = f'[{entry["log_level"]}]'
         colored_timestamp = f"{_GREEN}{log_timestamp}{_RESET}"
         colored_level = f"{_level_color(entry['log_level'])}{log_level.ljust(11)}{_RESET}"

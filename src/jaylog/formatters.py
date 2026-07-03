@@ -106,7 +106,7 @@ class PlainTextFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         entry = build_log_entry_dict(record)
-        log_timestamp = datetime.fromisoformat(entry['log_timestamp']).strftime('%d/%m/%Y %X')
+        log_timestamp = datetime.fromisoformat(entry['log_timestamp']).astimezone().strftime('%d/%m/%Y %X')
         log_level = f'[{entry["log_level"]}]'
         service_segment = f'[{entry["service"]}] | ' if self.show_service else ''
         return (
