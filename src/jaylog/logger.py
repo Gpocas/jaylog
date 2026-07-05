@@ -3,6 +3,7 @@ import logging
 import signal
 from logging.handlers import QueueHandler, QueueListener
 from queue import Queue
+from typing import cast
 
 from jaylog.filters import ExceptionFlagFilter
 from jaylog.formatters import configure_screenshot
@@ -74,12 +75,26 @@ def get_logger(name: str | None = None) -> logging.Logger:
     configuração registrada. Chamadas repetidas com o mesmo nome retornam o
     **mesmo** logger, sem re-anexar handlers.
 
+    Se ``configure()`` ainda não tiver sido chamado, retorna um proxy
+    preguiçoso: nenhum erro é levantado aqui. O erro só aparece no primeiro
+    uso efetivo (``logger.info(...)``, ``logger.warning(...)`` etc.), o que
+    permite fazer ``logger = get_logger()`` no topo de um módulo antes de
+    ``configure()`` ter rodado em outro lugar.
+
     Architecture:
         logger  →  QueueHandler  →  Queue  →  QueueListener  →  [FileHandler, HttpHandler?]
 
     The QueueListener runs in a background thread so `emit()` never blocks the
     calling thread.
     """
+    if not _settings_registry:
+        # _LazyLogger não é um logging.Logger de verdade: é um proxy que
+        # delega (via __getattr__) para o logger real assim que ele existir.
+        return cast(logging.Logger, _LazyLogger(name))
+    return _build_logger(name)
+
+
+def _build_logger(name: str | None) -> logging.Logger:
     if not _settings_registry:
         raise Exception(
             'Não é possivel retornar uma instancia de logger sem configuração\n'
@@ -109,6 +124,7 @@ def get_logger(name: str | None = None) -> logging.Logger:
     show_service = len(_settings_registry) > 1
 
     if settings.log_dir is not None:
+        assert settings.log_filename is not None
         log_path = settings.log_dir / settings.log_filename
         file_handler = JaylogFileHandler(
             filename=log_path,
@@ -156,6 +172,27 @@ def get_logger(name: str | None = None) -> logging.Logger:
     _registry[name] = (logger, listener)
     _register_shutdown_hooks()
     return logger
+
+
+class _LazyLogger:
+    """
+    Proxy devolvido por ``get_logger()`` quando ``configure()`` ainda não
+    rodou. Resolve o logger real (e levanta o erro de configuração ausente,
+    se for o caso) apenas no primeiro atributo acessado — ou seja, na
+    primeira chamada de ``.info()``, ``.warning()`` etc.
+    """
+
+    def __init__(self, name: str | None) -> None:
+        self._name = name
+        self._resolved: logging.Logger | None = None
+
+    def _resolve(self) -> logging.Logger:
+        if self._resolved is None:
+            self._resolved = _build_logger(self._name)
+        return self._resolved
+
+    def __getattr__(self, item):
+        return getattr(self._resolve(), item)
 
 
 def shutdown(name: str | None = None) -> None:

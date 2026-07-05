@@ -50,7 +50,7 @@ class JaylogHttpHandler(logging.Handler):
         super().__init__()
         self.endpoint = endpoint
         self.timeout = timeout
-        self.proxy = {'http': proxy, 'https': proxy}
+        self.proxy = {'http': proxy, 'https': proxy} if proxy else None
         self._session = requests.Session()
         self._session.headers["x-api-key"] = api_key
         self._session.headers["x-jaylog-version"] = _JAYLOG_VERSION
