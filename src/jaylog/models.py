@@ -13,4 +13,5 @@ class LogEntry(BaseModel):
     hostname: str
     ipv4: str
     service_path: str
+    line_number: int
     log_img: Optional[str] = None
