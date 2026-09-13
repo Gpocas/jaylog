@@ -241,3 +241,28 @@ configure(JaylogSettings(_env_file='prodution.env').reload_secrets())
 logger = get_logger()
 
 logger.info("Mensagem de log")
+```
+
+`reload_secrets()` devolve uma **nova** instância preservando tudo que foi passado explicitamente no construtor, então dá para combinar configuração em código com secrets em disco:
+
+```python
+settings = JaylogSettings(app_name='meu-bot', log_level='DEBUG').reload_secrets()
+configure(settings)  # app_name e log_level mantidos; endpoint/api_key vêm dos secrets
+```
+
+> [!NOTE]
+> Valores passados no construtor têm prioridade sobre os secrets: um `log_http_api_key='...'` definido em código **não** é sobrescrito pelo arquivo em `secrets/`.
+
+## Reconfigurando sem repetir argumentos
+
+`reconfigure()` recria a configuração com os mesmos argumentos do construtor, aplicando apenas os overrides informados. Vale tanto para campos quanto para os argumentos de configuração do pydantic-settings (`_env_file`, `_secrets_dir`, `_case_sensitive`, `_env_prefix`, ...):
+
+```python
+base = JaylogSettings(app_name='meu-bot', log_level='DEBUG')
+
+homolog = base.reconfigure(_env_file='homolog.env')
+prod    = base.reconfigure(_env_file='producao.env', log_level='WARNING')
+# app_name preservado nos dois; só o que foi informado muda
+```
+
+É sobre esse mecanismo que o `reload_secrets()` é construído — ele é só um `reconfigure(_secrets_dir=...)` com validação.
