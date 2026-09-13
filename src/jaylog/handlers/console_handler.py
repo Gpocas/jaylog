@@ -1,43 +1,71 @@
 import logging
 import sys
 from datetime import datetime
+from typing import IO
 
+from jaylog.colors import BLUE, GREEN, PURPLE, RED, RESET, YELLOW, supports_color
 from jaylog.formatters import build_log_entry_dict
 
-_GREEN = "\033[32m"
-_BLUE = "\033[34m"
-_PURPLE = "\033[35m"
-_YELLOW = "\033[33m"
-_RED = "\033[31m"
-_RESET = "\033[0m"
-
 _LEVEL_COLORS = {
-    "DEBUG": _PURPLE,
-    "INFO": _BLUE,
-    "WARNING": _YELLOW,
+    "DEBUG": PURPLE,
+    "INFO": BLUE,
+    "WARNING": YELLOW,
 }
 
 
 def _level_color(level: str) -> str:
-    return _LEVEL_COLORS.get(level, _RED)
+    return _LEVEL_COLORS.get(level, RED)
 
 
 class ConsoleFormatter(logging.Formatter):
-    def __init__(self, show_service: bool = True) -> None:
+    """
+    Formata o log para o console.
+
+    Quando ``use_color`` é falso (console legado do Windows sem suporte a ANSI,
+    saída redirecionada para arquivo/pipe, ``NO_COLOR`` etc.) a mesma linha é
+    emitida sem nenhum escape code, em vez de sujar a tela com ``←[32m``.
+    """
+
+    def __init__(self, show_service: bool = True, use_color: bool = True) -> None:
         super().__init__()
         self.show_service = show_service
+        self.use_color = use_color
+
+    def _paint(self, text: str, color: str) -> str:
+        if not self.use_color:
+            return text
+        return f"{color}{text}{RESET}"
 
     def format(self, record: logging.LogRecord) -> str:
         entry = build_log_entry_dict(record)
         log_timestamp = datetime.fromisoformat(entry["log_timestamp"]).astimezone().strftime("%d/%m/%Y %X")
         log_level = f'[{entry["log_level"]}]'
-        colored_timestamp = f"{_GREEN}{log_timestamp}{_RESET}"
-        colored_level = f"{_level_color(entry['log_level'])}{log_level.ljust(11)}{_RESET}"
+        colored_timestamp = self._paint(log_timestamp, GREEN)
+        colored_level = self._paint(log_level.ljust(11), _level_color(entry['log_level']))
         service_segment = f'[{entry["service"]}] | ' if self.show_service else ''
         return f"{colored_timestamp} {colored_level} | {service_segment}{entry['log_message']}"
 
 
 class JaylogConsoleHandler(logging.StreamHandler):
-    def __init__(self, show_service: bool = True) -> None:
-        super().__init__(stream=sys.stdout)
-        self.setFormatter(ConsoleFormatter(show_service=show_service))
+    """
+    Handler de console.
+
+    ``color=None`` (padrão) detecta automaticamente o suporte a ANSI do stream —
+    ligando o modo VT do console do Windows quando disponível. ``True``/``False``
+    forçam o comportamento.
+    """
+
+    def __init__(
+        self,
+        show_service: bool = True,
+        color: bool | None = None,
+        stream: IO[str] | None = None,
+    ) -> None:
+        stream = stream if stream is not None else sys.stdout
+        super().__init__(stream=stream)
+        self.setFormatter(
+            ConsoleFormatter(
+                show_service=show_service,
+                use_color=supports_color(stream, force=color),
+            )
+        )

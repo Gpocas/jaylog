@@ -20,7 +20,8 @@ As variáveis usam o prefixo `JAYLOG_`. Podem ser definidas no ambiente do siste
 | `JAYLOG_LOG_MAX_BYTES`          | NÃO          | `5242880` | Tamanho máximo do arquivo de log antes de rotacionar (bytes)            |
 | `JAYLOG_LOG_BACKUP_COUNT`       | NÃO          | `5`       | Quantidade de arquivos de backup mantidos após rotação                  |
 | `JAYLOG_LOG_RETENTION_DAYS`     | NÃO          | `7`       | Dias para manter arquivos de log antigos                                |
-| `JAYLOG_LOG_CONSOLE_ENABLED`    | NÃO          | `true`    | Habilita saída colorida no console (`true`/`false`)                     |
+| `JAYLOG_LOG_CONSOLE_ENABLED`    | NÃO          | `true`    | Habilita a saída de log no console (`true`/`false`)                     |
+| `JAYLOG_LOG_CONSOLE_COLOR`      | NÃO          | `null`    | Força (`true`) ou desliga (`false`) as cores no console. Se omitido, detecta automaticamente o suporte do terminal |
 | `JAYLOG_LOG_HTTP_TIMEOUT`       | NÃO          | `5.0`     | Timeout em segundos para o envio HTTP                                   |
 | `JAYLOG_LOG_HTTP_ENDPOINT`      | NÃO          | `null`    | URL do endpoint que receberá os logs                                    |
 | `JAYLOG_LOG_HTTP_API_KEY`       | NÃO          | `null`    | Chave de autenticação enviada no header `x-api-key`                     |
@@ -130,6 +131,33 @@ logger.info("Pedido recebido")
 billing_logger.info("Fatura emitida")
 ```
 
+
+
+## Cores no console
+
+As cores são ligadas automaticamente quando o terminal suporta ANSI. A detecção cobre:
+
+- **Windows**: o modo *virtual terminal* do console é habilitado em tempo de execução, o que faz as cores funcionarem também no `cmd.exe`/PowerShell rodando no console legado (`conhost`) do Windows 10 — antes só saía colorido no Windows Terminal.
+- **Saída redirecionada** (`python main.py > saida.txt`, pipes, serviços sem console): as cores são desligadas, para o arquivo não ficar com lixo do tipo `←[32m`.
+- **Consoles antigos** que não suportam ANSI de jeito nenhum: o log sai em texto limpo, com o mesmo alinhamento.
+- As convenções `NO_COLOR` e `FORCE_COLOR` são respeitadas.
+
+Para forçar um comportamento, use `JAYLOG_LOG_CONSOLE_COLOR`:
+
+__*.env.logging*__
+```env
+JAYLOG_APP_NAME=meu-bot
+JAYLOG_LOG_CONSOLE_COLOR=false
+```
+
+Ou direto no código:
+
+```python
+configure(JaylogSettings(app_name="meu-bot", log_console_color=False))
+```
+
+> [!TIP]
+> `JAYLOG_LOG_CONSOLE_COLOR=true` força as cores mesmo com a saída redirecionada — útil quando o log é consumido por uma ferramenta que entende ANSI (ex: `... | less -R`).
 
 
 ## Alterando Caminho padrão do .env

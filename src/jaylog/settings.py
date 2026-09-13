@@ -50,6 +50,10 @@ class JaylogSettings(BaseSettings):
     # Console handler — desativar com JAYLOG_LOG_CONSOLE_ENABLED=false
     log_console_enabled: bool = True
 
+    # Cores ANSI no console. `None` (padrão) detecta o suporte do terminal;
+    # true/false forçam. Ver JAYLOG_LOG_CONSOLE_COLOR no README.
+    log_console_color: Optional[bool] = None
+
     # Screenshot (log_img field) — desativar com JAYLOG_LOG_SCREENSHOT_ENABLED=false
     log_screenshot_enabled: bool = False
 

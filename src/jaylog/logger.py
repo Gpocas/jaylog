@@ -137,7 +137,10 @@ def _build_logger(name: str | None) -> logging.Logger:
         downstream.append(file_handler)
 
     if settings.log_console_enabled:
-        console_handler = JaylogConsoleHandler(show_service=show_service)
+        console_handler = JaylogConsoleHandler(
+            show_service=show_service,
+            color=settings.log_console_color,
+        )
         console_handler.setLevel(settings.log_level)
         downstream.append(console_handler)
 
