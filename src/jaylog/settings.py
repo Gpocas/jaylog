@@ -3,21 +3,21 @@ from pathlib import Path
 from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from jaylog.formatters import _HOST_USERNAME, _HOSTNAME
+from jaylog.host import identity
 
 # Compat: na assinatura anterior de `JaylogSettings.__init__` estes eram os dois
 # primeiros parâmetros posicionais. Pode ser removido quando não houver mais
 # chamadas posicionais em uso.
-_LEGACY_POSITIONAL_ARGS = ('_env_file', '_secrets_dir')
+_LEGACY_POSITIONAL_ARGS = ("_env_file", "_secrets_dir")
 
 
 class JaylogSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="JAYLOG_",
-        env_file=('.env.logging', '.env'),
-        env_file_encoding='utf-8',
-        secrets_dir='secrets',
-        extra="ignore"
+        env_file=(".env.logging", ".env"),
+        env_file_encoding="utf-8",
+        secrets_dir="secrets",
+        extra="ignore",
     )
 
     # Tudo que foi recebido no construtor: os campos normais (`app_name=...`) e
@@ -30,18 +30,16 @@ class JaylogSettings(BaseSettings):
     def __init__(self, *args, **values) -> None:
         if len(args) > len(_LEGACY_POSITIONAL_ARGS):
             raise TypeError(
-                f'{type(self).__name__}() aceita no máximo '
-                f'{len(_LEGACY_POSITIONAL_ARGS)} argumentos posicionais'
+                f"{type(self).__name__}() aceita no máximo "
+                f"{len(_LEGACY_POSITIONAL_ARGS)} argumentos posicionais"
             )
-        for name, value in zip(_LEGACY_POSITIONAL_ARGS, args):
+        for name, value in zip(_LEGACY_POSITIONAL_ARGS, args, strict=False):
             if name in values:
-                raise TypeError(
-                    f'{type(self).__name__}() recebeu dois valores para {name!r}'
-                )
+                raise TypeError(f"{type(self).__name__}() recebeu dois valores para {name!r}")
             values[name] = value
 
         super().__init__(**values)
-        object.__setattr__(self, '_init_values', dict(values))
+        object.__setattr__(self, "_init_values", dict(values))
 
     def _settings_arg(self, name: str):
         """
@@ -51,15 +49,15 @@ class JaylogSettings(BaseSettings):
         """
         if name in self._init_values:
             return self._init_values[name]
-        return self.model_config.get(name.lstrip('_'))
+        return self.model_config.get(name.lstrip("_"))
 
     @property
     def _env_file(self):
-        return self._settings_arg('_env_file')
+        return self._settings_arg("_env_file")
 
     @property
     def _secrets_dir(self):
-        return self._settings_arg('_secrets_dir')
+        return self._settings_arg("_secrets_dir")
 
     def reconfigure(self, **overrides) -> "JaylogSettings":
         """
@@ -106,6 +104,59 @@ class JaylogSettings(BaseSettings):
     # Screenshot (log_img field) — desativar com JAYLOG_LOG_SCREENSHOT_ENABLED=false
     log_screenshot_enabled: bool = False
 
+    # Verificação do certificado TLS no envio HTTP. Aceita bool ou o caminho de
+    # um CA bundle (`requests` entende os dois).
+    #
+    # O padrão continua `False` na 0.3.x: virar `True` derrubaria, no dia do
+    # upgrade, todo bot atrás de proxy corporativo com inspeção TLS — uma
+    # biblioteca de log não pode quebrar a aplicação que ela observa. É dívida
+    # consciente, com data: o padrão vira `True` na 0.4.0. Quem já tem o bundle
+    # corporativo pode antecipar com
+    # `JAYLOG_LOG_HTTP_VERIFY=/caminho/corp-ca.pem`.
+    log_http_verify: bool | str = False
+
+    # ------------------------------------------------------------------
+    # Registro de ambiente (host) — enviado uma vez por processo/serviço
+    # ------------------------------------------------------------------
+
+    host_report_enabled: bool = True
+
+    # Por padrão a URL é derivada de `log_http_endpoint` trocando o último
+    # segmento (`/logs/add` -> `/logs/host`), então deploys existentes não
+    # precisam mexer na configuração. Defina aqui só para sobrepor.
+    host_http_endpoint: str | None = None
+
+    # `None` = o dobro de `log_http_timeout`: o POST de host é maior que o de
+    # um log e acontece uma vez, então vale esperar mais por ele.
+    host_report_timeout: float | None = None
+
+    host_git_enabled: bool = True
+    host_git_dirty_enabled: bool = True
+    host_git_remote_enabled: bool = True
+    host_git_timeout: float = 3.0
+
+    # Diretório de onde partir a busca pelo repositório. Sem isto, a busca
+    # começa no diretório do entrypoint — e não no `cwd`, que numa tarefa do
+    # Agendador sem "Iniciar em" é `C:\Windows\system32`.
+    host_git_dir: Path | None = None
+
+    @property
+    def effective_host_endpoint(self) -> str | None:
+        """URL do `POST /logs/host`: o override, ou a derivada do endpoint de log."""
+        if self.host_http_endpoint:
+            return self.host_http_endpoint
+        if not self.log_http_endpoint:
+            return None
+        from jaylog.endpoints import derive_host_endpoint
+
+        return derive_host_endpoint(self.log_http_endpoint)
+
+    @property
+    def effective_host_timeout(self) -> float:
+        if self.host_report_timeout is not None:
+            return self.host_report_timeout
+        return self.log_http_timeout * 2
+
     @field_validator("log_dir", mode="after")
     @classmethod
     def validate_log_dir(cls, v: Path | None) -> Path | None:
@@ -118,7 +169,7 @@ class JaylogSettings(BaseSettings):
     def log_filename(self) -> Path | None:
         if self.log_dir is None:
             return None
-        return Path(f"{self.app_name}_{_HOSTNAME}_{_HOST_USERNAME}.log")
+        return Path(f"{self.app_name}_{identity.hostname()}_{identity.username()}.log")
 
     def reload_secrets(self) -> "JaylogSettings":
         """
@@ -144,9 +195,9 @@ class JaylogSettings(BaseSettings):
                 )
             return self.reconfigure(_secrets_dir=self.secrets_dir)
 
-        if '_secrets_dir' in self._init_values:
+        if "_secrets_dir" in self._init_values:
             raise SyntaxError(
-                'Não é possivel usar `reload_secrets` caso o valor de _secrets_dir foi sobrescrito'
+                "Não é possivel usar `reload_secrets` caso o valor de _secrets_dir foi sobrescrito"
             )
 
         # nenhum JAYLOG_SECRETS_DIR definido: relê mantendo o diretório atual,

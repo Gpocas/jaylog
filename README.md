@@ -26,7 +26,16 @@ As variáveis usam o prefixo `JAYLOG_`. Podem ser definidas no ambiente do siste
 | `JAYLOG_LOG_HTTP_ENDPOINT`      | NÃO          | `null`    | URL do endpoint que receberá os logs                                    |
 | `JAYLOG_LOG_HTTP_API_KEY`       | NÃO          | `null`    | Chave de autenticação enviada no header `x-api-key`                     |
 | `JAYLOG_LOG_HTTP_PROXY`         | NÃO          | `null`    | URL do proxy para o envio HTTP (ex: `http:\\user:password@server:port`) |
+| `JAYLOG_LOG_HTTP_VERIFY`        | NÃO          | `false`   | `true` ou caminho para o bundle de CA usado para validar TLS            |
 | `JAYLOG_LOG_SCREENSHOT_ENABLED` | NÃO          | `false`   | Captura screenshot no momento do log (`true`/`false`, apenas Windows)   |
+| `JAYLOG_HOST_REPORT_ENABLED`    | NÃO          | `true`    | Envia uma fotografia do ambiente no startup                             |
+| `JAYLOG_HOST_HTTP_ENDPOINT`     | NÃO          | derivado  | Override para o endpoint de host; por padrão `/logs/add` vira `/logs/host` |
+| `JAYLOG_HOST_REPORT_TIMEOUT`    | NÃO          | `2 × HTTP_TIMEOUT` | Timeout do POST de ambiente                                     |
+| `JAYLOG_HOST_GIT_ENABLED`       | NÃO          | `true`    | Coleta metadados do repositório Git                                     |
+| `JAYLOG_HOST_GIT_DIRTY_ENABLED` | NÃO          | `true`    | Coleta se há arquivos alterados                                         |
+| `JAYLOG_HOST_GIT_REMOTE_ENABLED`| NÃO          | `true`    | Coleta a URL remota sem credenciais                                     |
+| `JAYLOG_HOST_GIT_TIMEOUT`       | NÃO          | `3.0`     | Timeout, em segundos, de cada chamada ao Git                            |
+| `JAYLOG_HOST_GIT_DIR`           | NÃO          | `null`    | Diretório inicial para localizar o repositório                          |
 
 
 ## Como usar?
@@ -102,6 +111,7 @@ from jaylog import get_logger
 
 logger = get_logger()
 
+
 def parse_csv():
     logger.info("Múltiplos Arquivos - parse.py")
 ```
@@ -119,12 +129,12 @@ __*main.py*__
 ```python
 from jaylog import JaylogSettings, configure, get_logger
 
-settings_order   = JaylogSettings(app_name="ORDER-PROCESSOR")
+settings_order = JaylogSettings(app_name="ORDER-PROCESSOR")
 settings_billing = JaylogSettings(app_name="BILLING")
 
 configure([settings_order, settings_billing])
 
-logger         = get_logger("ORDER-PROCESSOR")  # ou get_logger() — retorna o primeiro registrado
+logger = get_logger("ORDER-PROCESSOR")  # ou get_logger() — retorna o primeiro registrado
 billing_logger = get_logger("BILLING")
 
 logger.info("Pedido recebido")
@@ -172,7 +182,7 @@ __*main.py*__
 ```python
 from jaylog import JaylogSettings, configure, get_logger
 
-configure(JaylogSettings(_env_file='development.env'))
+configure(JaylogSettings(_env_file="development.env"))
 logger = get_logger()
 
 logger.info("Alterando Caminho padrão do .env")
@@ -180,6 +190,32 @@ logger.info("Alterando Caminho padrão do .env")
 
 
 ## Preparando para produção
+
+## Registro do ambiente
+
+Na versão 0.3, `configure()` inicia em segundo plano um único `POST` JSON para
+o endpoint de host por serviço. O corpo dos logs continua compatível com a
+linha 0.2.x; apenas os headers `x-jaylog-protocol: 2` e `x-jaylog-run-id` são
+adicionados. O `run_id` permite ao backend ligar os logs à execução que os
+produziu.
+
+O endpoint é derivado automaticamente trocando o último segmento de
+`JAYLOG_LOG_HTTP_ENDPOINT`: `https://api.example/logs/add` vira
+`https://api.example/logs/host`. Use `JAYLOG_HOST_HTTP_ENDPOINT` somente quando
+o backend publicar a rota em outro endereço.
+
+O registro inclui sistema operacional, modo de execução, Python, virtualenv,
+Git e diretórios de execução. A URL remota do Git tem sempre a credencial
+embutida removida antes de sair da máquina. Falhas de coleta ou de rede não
+interrompem a aplicação: o envio tenta novamente com backoff. Se o backend
+aceitar um log mas devolver `x-jaylog-host-required: 1`, o jaylog reenvia o
+registro de host com debounce de 30 segundos; o log já foi aceito e não é
+reenviado.
+
+`JAYLOG_LOG_HTTP_VERIFY=false` continua sendo o padrão desta versão para não
+interromper instalações atrás de proxies corporativos. Para validar TLS, use
+`JAYLOG_LOG_HTTP_VERIFY=true` ou informe o caminho do CA bundle corporativo.
+O padrão passará a `true` na 0.4.0.
 
 > [!IMPORTANT]
 > **HTTP_ENDPOINT** e **HTTP_API_KEY** (opcionais) 📢
@@ -213,10 +249,7 @@ __*main.py*__
 ```python
 from jaylog import JaylogSettings, configure, get_logger
 
-configure(JaylogSettings(
-    _env_file='prodution.env',
-    _secrets_dir='/foo/bar/secrets/'
-))
+configure(JaylogSettings(_env_file="prodution.env", _secrets_dir="/foo/bar/secrets/"))
 logger = get_logger()
 
 logger.info("Mensagem de log")
@@ -237,7 +270,7 @@ from jaylog import JaylogSettings, configure, get_logger
 
 # nesse caso é necessário usar a função de classe `reload_secrets`
 # pois o diretorio dos secrets foi passado via variável de ambiente
-configure(JaylogSettings(_env_file='prodution.env').reload_secrets())
+configure(JaylogSettings(_env_file="prodution.env").reload_secrets())
 logger = get_logger()
 
 logger.info("Mensagem de log")
@@ -246,7 +279,7 @@ logger.info("Mensagem de log")
 `reload_secrets()` devolve uma **nova** instância preservando tudo que foi passado explicitamente no construtor, então dá para combinar configuração em código com secrets em disco:
 
 ```python
-settings = JaylogSettings(app_name='meu-bot', log_level='DEBUG').reload_secrets()
+settings = JaylogSettings(app_name="meu-bot", log_level="DEBUG").reload_secrets()
 configure(settings)  # app_name e log_level mantidos; endpoint/api_key vêm dos secrets
 ```
 
@@ -258,10 +291,10 @@ configure(settings)  # app_name e log_level mantidos; endpoint/api_key vêm dos 
 `reconfigure()` recria a configuração com os mesmos argumentos do construtor, aplicando apenas os overrides informados. Vale tanto para campos quanto para os argumentos de configuração do pydantic-settings (`_env_file`, `_secrets_dir`, `_case_sensitive`, `_env_prefix`, ...):
 
 ```python
-base = JaylogSettings(app_name='meu-bot', log_level='DEBUG')
+base = JaylogSettings(app_name="meu-bot", log_level="DEBUG")
 
-homolog = base.reconfigure(_env_file='homolog.env')
-prod    = base.reconfigure(_env_file='producao.env', log_level='WARNING')
+homolog = base.reconfigure(_env_file="homolog.env")
+prod = base.reconfigure(_env_file="producao.env", log_level="WARNING")
 # app_name preservado nos dois; só o que foi informado muda
 ```
 

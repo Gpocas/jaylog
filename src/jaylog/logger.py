@@ -1,22 +1,31 @@
 import atexit
 import logging
 import signal
+import sys
 from logging.handlers import QueueHandler, QueueListener
 from queue import Queue
 from typing import cast
 
 from jaylog.filters import ExceptionFlagFilter
-from jaylog.formatters import configure_screenshot
 from jaylog.handlers.console_handler import JaylogConsoleHandler
 from jaylog.handlers.file_handler import JaylogFileHandler
 from jaylog.handlers.http_handler import JaylogHttpHandler
+from jaylog.host import reporter
+from jaylog.host.collectors import collect_host_info
+from jaylog.host.payload import build_host_payload
+from jaylog.host.reporter import JaylogHostReporter
+from jaylog.screenshot import configure_screenshot
 from jaylog.settings import JaylogSettings
 
-# Registry: name -> (logger, listener) so callers can shut down cleanly
-_registry: dict[str, tuple[logging.Logger, QueueListener]] = {}
+# Registry: name -> (logger, listener, queue_handler) so callers can shut down
+# cleanly. O QueueHandler entrou na tupla porque sem ele `shutdown()` não tinha
+# como desanexá-lo do logger.
+_registry: dict[str, tuple[logging.Logger, QueueListener, QueueHandler]] = {}
 _shutdown_registered = False
 # name (== app_name) -> settings registrada via configure()
 _settings_registry: dict[str, JaylogSettings] = {}
+
+_insecure_transport_warned = False
 
 
 def configure(settings: JaylogSettings | list[JaylogSettings]) -> None:
@@ -33,21 +42,91 @@ def configure(settings: JaylogSettings | list[JaylogSettings]) -> None:
     Cada chamada é a "fonte da verdade" do conjunto de loggers: derruba os
     loggers registrados anteriormente e registra apenas os informados aqui.
     Levanta ``ValueError`` se a lista contiver ``app_name`` duplicado.
+
+    É também aqui que o registro de ambiente (``POST /logs/host``) é disparado,
+    numa thread daemon por serviço. O import é cedo demais — não há ``app_name``,
+    endpoint nem api key — e o primeiro ``_build_logger()`` é tarde demais e
+    incerto: via ``_LazyLogger`` ele pode demorar minutos ou nunca acontecer, e
+    o registro de host chegaria *depois* dos logs que apontam para ele.
+    ``configure()`` é o momento documentado em que "o jaylog começa".
+
+    A coleta em si (snapshot de processos + até seis subprocessos ``git``) custa
+    ~100-500 ms e roda inteira dentro da thread: ``configure()`` continua
+    instantâneo para o chamador.
     """
     items = [settings] if isinstance(settings, JaylogSettings) else list(settings)
 
     seen: set[str] = set()
     for item in items:
         if item.app_name in seen:
-            raise ValueError(
-                f"app_name duplicado em configure(): '{item.app_name}'"
-            )
+            raise ValueError(f"app_name duplicado em configure(): '{item.app_name}'")
         seen.add(item.app_name)
 
     shutdown()
     _settings_registry.clear()
     for item in items:
         _settings_registry[item.app_name] = item
+
+    _warn_insecure_transport(items)
+    _start_host_reporters(items)
+
+
+def _warn_insecure_transport(items: list[JaylogSettings]) -> None:
+    """
+    Aviso único sobre ``log_http_verify=False``.
+
+    O padrão continua inseguro na 0.3.x de propósito (ver ``JaylogSettings``),
+    mas silêncio total transformaria a dívida em esquecimento.
+    """
+    global _insecure_transport_warned
+    if _insecure_transport_warned:
+        return
+    for item in items:
+        endpoint = item.log_http_endpoint or ""
+        if endpoint.startswith("https://") and item.log_http_verify is False:
+            _insecure_transport_warned = True
+            print(
+                "[jaylog] o certificado TLS do endpoint de log NÃO está sendo "
+                "verificado (padrão atual). Defina "
+                "JAYLOG_LOG_HTTP_VERIFY=/caminho/ca-bundle.pem (ou =true) para "
+                "habilitar. O padrão passa a ser 'true' na 0.4.0.",
+                file=sys.stderr,
+            )
+            return
+
+
+def _host_payload_factory(settings: JaylogSettings):
+    def factory() -> dict:
+        info = collect_host_info(
+            git_enabled=settings.host_git_enabled,
+            git_dir=settings.host_git_dir,
+            git_timeout=settings.host_git_timeout,
+            git_dirty_enabled=settings.host_git_dirty_enabled,
+            git_remote_enabled=settings.host_git_remote_enabled,
+        )
+        return build_host_payload(settings.app_name, info)
+
+    return factory
+
+
+def _start_host_reporters(items: list[JaylogSettings]) -> None:
+    for item in items:
+        if not item.host_report_enabled:
+            continue
+        endpoint = item.effective_host_endpoint
+        if not endpoint or not item.log_http_api_key:
+            continue
+        host_reporter = JaylogHostReporter(
+            service=item.app_name,
+            endpoint=endpoint,
+            api_key=item.log_http_api_key,
+            timeout=item.effective_host_timeout,
+            proxy=item.log_http_proxy,
+            verify=item.log_http_verify,
+            payload_factory=_host_payload_factory(item),
+        )
+        reporter.register(host_reporter)
+        host_reporter.start()
 
 
 def _register_shutdown_hooks() -> None:
@@ -63,7 +142,18 @@ def _register_shutdown_hooks() -> None:
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
         signal.raise_signal(signal.SIGTERM)
 
-    signal.signal(signal.SIGTERM, _sigterm_handler)
+    # `signal.signal()` só funciona na main thread — e `_build_logger()` roda em
+    # qualquer thread quando vem de um `_LazyLogger`, que é justamente o caminho
+    # que a lib anuncia. Sem a proteção, o primeiro `logger.info()` de uma worker
+    # thread levantaria `ValueError: signal only works in main thread`.
+    #
+    # A checagem de `SIG_DFL` cobre o outro lado: se a aplicação já instalou o
+    # próprio handler de SIGTERM, o jaylog não o rouba.
+    try:
+        if signal.getsignal(signal.SIGTERM) is signal.SIG_DFL:
+            signal.signal(signal.SIGTERM, _sigterm_handler)
+    except (ValueError, OSError, AttributeError):
+        pass
 
 
 def get_logger(name: str | None = None) -> logging.Logger:
@@ -97,17 +187,16 @@ def get_logger(name: str | None = None) -> logging.Logger:
 def _build_logger(name: str | None) -> logging.Logger:
     if not _settings_registry:
         raise Exception(
-            'Não é possivel retornar uma instancia de logger sem configuração\n'
-            'use jaylog.configure() antes de jaylog.get_logger()'
+            "Não é possivel retornar uma instancia de logger sem configuração\n"
+            "use jaylog.configure() antes de jaylog.get_logger()"
         )
 
     if name is None:
         name = next(iter(_settings_registry))
     elif name not in _settings_registry:
-        disponiveis = ', '.join(_settings_registry) or '(nenhum)'
+        disponiveis = ", ".join(_settings_registry) or "(nenhum)"
         raise KeyError(
-            f"Nenhuma configuração registrada para '{name}'. "
-            f"Nomes disponíveis: {disponiveis}"
+            f"Nenhuma configuração registrada para '{name}'. Nomes disponíveis: {disponiveis}"
         )
 
     settings = _settings_registry[name]
@@ -150,6 +239,7 @@ def _build_logger(name: str | None) -> logging.Logger:
             api_key=settings.log_http_api_key,
             proxy=settings.log_http_proxy,
             timeout=settings.log_http_timeout,
+            verify=settings.log_http_verify,
         )
         http_handler.setLevel(settings.log_level)
         downstream.append(http_handler)
@@ -172,7 +262,7 @@ def _build_logger(name: str | None) -> logging.Logger:
     logger.addHandler(queue_handler)
     logger.propagate = False
 
-    _registry[name] = (logger, listener)
+    _registry[name] = (logger, listener, queue_handler)
     _register_shutdown_hooks()
     return logger
 
@@ -183,16 +273,22 @@ class _LazyLogger:
     rodou. Resolve o logger real (e levanta o erro de configuração ausente,
     se for o caso) apenas no primeiro atributo acessado — ou seja, na
     primeira chamada de ``.info()``, ``.warning()`` etc.
+
+    A resolução **não** é cacheada: um proxy que memorizasse o logger ficaria
+    preso a ele depois de um ``configure()`` posterior, escrevendo para um
+    listener já parado — os logs sumiriam sem erro. Resolver a cada acesso custa
+    uma busca em dicionário, irrelevante perto do custo de formatar um log.
+
+    Limitação conhecida: ``isinstance(get_logger(), logging.Logger)`` é ``False``
+    enquanto o proxy não resolve. Não há conserto sem transformar o proxy numa
+    subclasse real de ``Logger``.
     """
 
     def __init__(self, name: str | None) -> None:
         self._name = name
-        self._resolved: logging.Logger | None = None
 
     def _resolve(self) -> logging.Logger:
-        if self._resolved is None:
-            self._resolved = _build_logger(self._name)
-        return self._resolved
+        return _build_logger(self._name)
 
     def __getattr__(self, item):
         return getattr(self._resolve(), item)
@@ -203,9 +299,23 @@ def shutdown(name: str | None = None) -> None:
     Stop the QueueListener(s) gracefully, flushing any remaining records.
 
     Pass a logger `name` to stop a single logger, or omit to stop all.
+
+    Desanexa também o ``QueueHandler`` do logger. Sem isso — e como
+    ``configure()`` chama ``shutdown()`` — um segundo ``configure()`` deixava no
+    logger um ``QueueHandler`` apontando para um listener morto e adicionava
+    outro por cima: os registros iam para uma fila que ninguém mais drenava.
     """
     targets = [name] if name else list(_registry.keys())
     for n in targets:
         if n in _registry:
-            _, listener = _registry.pop(n)
+            logger, listener, queue_handler = _registry.pop(n)
+            # remover antes de parar o listener: nada novo entra na fila, e o
+            # que já está nela ainda é drenado pelo `stop()`.
+            logger.removeHandler(queue_handler)
             listener.stop()
+            queue_handler.close()
+
+    if name is None:
+        reporter.stop_all()
+    else:
+        reporter.stop(name)

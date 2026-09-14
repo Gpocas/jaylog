@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import IO
 
 from jaylog.colors import BLUE, GREEN, PURPLE, RED, RESET, YELLOW, supports_color
-from jaylog.formatters import build_log_entry_dict
+from jaylog.context import record_entry
 
 _LEVEL_COLORS = {
     "DEBUG": PURPLE,
@@ -37,12 +37,14 @@ class ConsoleFormatter(logging.Formatter):
         return f"{color}{text}{RESET}"
 
     def format(self, record: logging.LogRecord) -> str:
-        entry = build_log_entry_dict(record)
-        log_timestamp = datetime.fromisoformat(entry["log_timestamp"]).astimezone().strftime("%d/%m/%Y %X")
-        log_level = f'[{entry["log_level"]}]'
+        entry = record_entry(record)
+        log_timestamp = (
+            datetime.fromisoformat(entry["log_timestamp"]).astimezone().strftime("%d/%m/%Y %X")
+        )
+        log_level = f"[{entry['log_level']}]"
         colored_timestamp = self._paint(log_timestamp, GREEN)
-        colored_level = self._paint(log_level.ljust(11), _level_color(entry['log_level']))
-        service_segment = f'[{entry["service"]}] | ' if self.show_service else ''
+        colored_level = self._paint(log_level.ljust(11), _level_color(entry["log_level"]))
+        service_segment = f"[{entry['service']}] | " if self.show_service else ""
         return f"{colored_timestamp} {colored_level} | {service_segment}{entry['log_message']}"
 
 

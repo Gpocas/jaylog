@@ -1,6 +1,6 @@
 [project]
 name = "jaylog"
-version = "0.2.8"
+version = "0.3.0a0"
 description = "Customized Python logging library with file rotation and HTTP forwarding"
 readme = "README.md"
 authors = [
@@ -26,6 +26,24 @@ dependencies = [
 repository = "https://github.com/Gpocas/jaylog"
 "Bug Tracker" = "https://github.com/Gpocas/jaylog/issues"
 
+[dependency-groups]
+dev = [
+    "pytest>=8,<9",
+    "ruff>=0.6",
+]
+
 [build-system]
 requires = ["uv_build>=0.10.8,<0.11.0"]
 build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
