@@ -1,0 +1,18 @@
+import pytest
+
+from jaylog.endpoints import derive_host_endpoint
+
+
+@pytest.mark.parametrize(
+    ("log_endpoint", "host_endpoint"),
+    [
+        ("https://api/logs/add", "https://api/logs/host"),
+        ("https://api/logs/add/", "https://api/logs/host"),
+        ("https://api/v1/logs/add", "https://api/v1/logs/host"),
+        ("https://api/add", "https://api/host"),
+        ("https://api", "https://api/host"),
+        ("https://api/logs/add?x=1", "https://api/logs/host?x=1"),
+    ],
+)
+def test_derives_host_endpoint(log_endpoint: str, host_endpoint: str) -> None:
+    assert derive_host_endpoint(log_endpoint) == host_endpoint
