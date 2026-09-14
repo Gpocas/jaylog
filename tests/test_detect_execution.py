@@ -38,6 +38,8 @@ def test_windows_unknown_when_process_table_is_unavailable(monkeypatch) -> None:
     assert "sessão 0" in (info.detail or "")
 
 
-def test_win32_functions_are_safe_off_windows() -> None:
+def test_win32_functions_are_safe_off_windows(monkeypatch) -> None:
+    monkeypatch.setattr(win32, "is_windows", lambda: False)
+
     assert win32.session_id() is None
     assert win32.process_table() == {}
