@@ -13,8 +13,7 @@ pip install -U --no-cache-dir jaylog
 ## Uso rápido
 
 > [!IMPORTANT]
-> A partir da versão 0.2.2, `configure()` **deve** ser chamado antes de `get_logger()`.
-> Chamar `get_logger()` sem configuração prévia lança uma exceção.
+> `configure()` deve ser chamado antes de usar o logger. `get_logger()` pode ser chamado antes — ele devolve um proxy preguiçoso e só levanta uma exceção no primeiro uso efetivo (`logger.info(...)`, etc.), caso `configure()` ainda não tenha rodado até lá.
 
 __*.env.logging*__
 ```env
