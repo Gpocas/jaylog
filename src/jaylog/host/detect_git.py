@@ -46,6 +46,7 @@ class GitInfo:
     branch: str | None = None
     commit: str | None = None
     commit_short: str | None = None
+    commit_msg: str | None = None
     dirty: bool | None = None
     remote_url: str | None = None
 
@@ -170,6 +171,7 @@ def detect_git(
 
     commit = _run_git(["rev-parse", "HEAD"], cwd, timeout)
     commit_short = commit[:7] if commit else None
+    commit_msg = _run_git(["log", "-1", "--format=%s"], cwd, timeout)
 
     dirty = None
     if dirty_enabled:
@@ -191,6 +193,7 @@ def detect_git(
         branch=branch,
         commit=commit,
         commit_short=commit_short,
+        commit_msg=commit_msg,
         dirty=dirty,
         remote_url=remote_url,
     )

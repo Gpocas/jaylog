@@ -27,6 +27,7 @@ def test_collects_detached_repo_and_redacts_remote(monkeypatch, tmp_path) -> Non
         ("rev-parse", "--show-toplevel"): str(tmp_path),
         ("rev-parse", "--abbrev-ref", "HEAD"): "HEAD",
         ("rev-parse", "HEAD"): "123456789abcdef",
+        ("log", "-1", "--format=%s"): "Add host reporting",
         ("status", "--porcelain"): "",
         ("remote", "get-url", "origin"): "https://bot:secret@github.com/org/repo.git",
     }
@@ -43,5 +44,6 @@ def test_collects_detached_repo_and_redacts_remote(monkeypatch, tmp_path) -> Non
     assert info.branch is None
     assert info.commit == "123456789abcdef"
     assert info.commit_short == "1234567"
+    assert info.commit_msg == "Add host reporting"
     assert info.dirty is False
     assert info.remote_url == "https://github.com/org/repo.git"
