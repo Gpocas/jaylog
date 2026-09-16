@@ -40,6 +40,7 @@ EXECUTION_MODES = (
 
 _DETAIL_MAX = 500
 _CRON_COMMS = {"cron", "crond"}
+_WINDOWS_SCHEDULER_ANCESTORS = {"svchost.exe", "taskeng.exe", "taskhostw.exe"}
 
 
 @dataclass(frozen=True)
@@ -84,17 +85,19 @@ def _detect_windows(pid: int) -> ExecutionInfo:
 
     detail = _join([own, *chain])
 
-    if parent is not None and parent.lower() == "services.exe":
+    if any(name in _WINDOWS_SCHEDULER_ANCESTORS for name in lowered):
+        # Win7 / 2008R2 usa taskeng.exe; versões mais novas podem usar
+        # taskhostw.exe ou iniciar o executável a partir do svchost que hospeda
+        # o serviço Schedule. Esses marcadores podem estar separados do Jaylog
+        # por cmd.exe, python.exe ou outro launcher, portanto toda a cadeia deve
+        # ser inspecionada. A heurística de svchost pode incluir processos
+        # ativados por WMI/COM; `detail` preserva a evidência para diagnóstico.
+        mode = TASK_SCHEDULER
+    elif "services.exe" in lowered:
+        # O Service Control Manager pode iniciar diretamente o programa ou um
+        # wrapper como NSSM, que por sua vez cria cmd/python e outros filhos.
+        # Logo, services.exe não precisa ser o pai imediato do processo atual.
         mode = WINDOWS_SERVICE
-    elif "taskeng.exe" in lowered:
-        # Win7 / 2008R2: o Agendador hospeda a tarefa num taskeng.exe.
-        mode = TASK_SCHEDULER
-    elif parent is not None and parent.lower() == "svchost.exe":
-        # Win8+: o serviço Schedule roda dentro de um svchost compartilhado.
-        # Um serviço `.exe` de verdade teria services.exe como pai, nunca
-        # svchost — por isso a heurística vale. Ela erra para processos
-        # ativados por WMI/COM, e é para isso que `detail` existe.
-        mode = TASK_SCHEDULER
     else:
         mode = INTERACTIVE
 

@@ -28,6 +28,51 @@ def test_windows_service_and_scheduler_classification(monkeypatch) -> None:
     assert detect_execution._detect_windows(10).mode == detect_execution.TASK_SCHEDULER
 
 
+def test_windows_service_through_nssm_and_python_launcher(monkeypatch) -> None:
+    monkeypatch.setattr(win32, "session_id", lambda: 0)
+    monkeypatch.setattr(
+        win32,
+        "process_table",
+        lambda: {
+            10: (20, "python.exe"),
+            20: (30, "python.exe"),
+            30: (40, "nssm.exe"),
+            40: (50, "services.exe"),
+            50: (0, "wininit.exe"),
+        },
+    )
+
+    info = detect_execution._detect_windows(10)
+
+    assert info.mode == detect_execution.WINDOWS_SERVICE
+    assert info.parent_process_name == "python.exe"
+    assert info.detail == "python.exe < python.exe < nssm.exe < services.exe < wininit.exe"
+
+
+def test_windows_task_scheduler_through_cmd_and_python_launcher(monkeypatch) -> None:
+    monkeypatch.setattr(win32, "session_id", lambda: 0)
+    monkeypatch.setattr(
+        win32,
+        "process_table",
+        lambda: {
+            10: (20, "python.exe"),
+            20: (30, "python.exe"),
+            30: (40, "cmd.exe"),
+            40: (50, "svchost.exe"),
+            50: (60, "services.exe"),
+            60: (0, "wininit.exe"),
+        },
+    )
+
+    info = detect_execution._detect_windows(10)
+
+    assert info.mode == detect_execution.TASK_SCHEDULER
+    assert info.parent_process_name == "python.exe"
+    assert info.detail == (
+        "python.exe < python.exe < cmd.exe < svchost.exe < services.exe < wininit.exe"
+    )
+
+
 def test_windows_unknown_when_process_table_is_unavailable(monkeypatch) -> None:
     monkeypatch.setattr(win32, "session_id", lambda: 0)
     monkeypatch.setattr(win32, "process_table", lambda: {})
