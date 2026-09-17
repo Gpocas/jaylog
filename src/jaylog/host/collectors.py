@@ -89,6 +89,7 @@ def _collect(
         git_commit=git.commit,
         git_commit_short=git.commit_short,
         git_commit_msg=git.commit_msg,
+        git_commit_datetime=git.commit_datetime,
         git_dirty=git.dirty,
         git_remote_url=git.remote_url,
         cwd=_cwd(),

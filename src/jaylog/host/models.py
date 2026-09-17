@@ -64,6 +64,7 @@ class HostInfo(BaseModel):
     git_commit: str | None = None
     git_commit_short: str | None = None
     git_commit_msg: str | None = None
+    git_commit_datetime: str | None = None
     git_dirty: bool | None = None
     git_remote_url: str | None = None
 

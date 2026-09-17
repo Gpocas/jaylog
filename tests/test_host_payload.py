@@ -14,4 +14,5 @@ def test_host_payload_is_flat_json_with_nulls() -> None:
     assert payload["python_frozen"] is False
     assert payload["git_branch"] is None
     assert payload["git_commit_msg"] is None
+    assert payload["git_commit_datetime"] is None
     assert json.loads(json.dumps(payload)) == payload
