@@ -140,6 +140,41 @@ class JaylogSettings(BaseSettings):
     # Agendador sem "Iniciar em" é `C:\Windows\system32`.
     host_git_dir: Path | None = None
 
+    # ------------------------------------------------------------------
+    # Métricas de recursos (CPU/memória/disco) — uma amostra por intervalo
+    # ------------------------------------------------------------------
+
+    # Só vale junto com `host_report_enabled`: sem o registro de host o backend
+    # não liga o `run_id` a hostname/username, e as amostras nunca apareceriam
+    # no gráfico.
+    host_metrics_enabled: bool = True
+
+    # Segundos entre amostras. O piso existe porque o backend agrega por minuto:
+    # abaixo disso é só custo de CPU e de POST para o mesmo ponto no gráfico.
+    host_metrics_interval: float = 60
+
+    # Derivado de `log_http_endpoint` (`/logs/add` -> `/logs/host-metrics`) se
+    # não definido.
+    host_metrics_http_endpoint: str | None = None
+
+    @property
+    def effective_host_metrics_endpoint(self) -> str | None:
+        """URL do `POST /logs/host-metrics`: o override, ou a derivada do endpoint de log."""
+        if self.host_metrics_http_endpoint:
+            return self.host_metrics_http_endpoint
+        if not self.log_http_endpoint:
+            return None
+        from jaylog.endpoints import derive_endpoint
+
+        return derive_endpoint(self.log_http_endpoint, "host-metrics")
+
+    @field_validator("host_metrics_interval", mode="after")
+    @classmethod
+    def validate_host_metrics_interval(cls, v: float) -> float:
+        if v < 10:
+            raise ValueError("JAYLOG_HOST_METRICS_INTERVAL deve ser de pelo menos 10 segundos")
+        return v
+
     @property
     def effective_host_endpoint(self) -> str | None:
         """URL do `POST /logs/host`: o override, ou a derivada do endpoint de log."""
