@@ -30,7 +30,9 @@ def test_collected_host_info_fills_machine_limits(monkeypatch) -> None:
     from jaylog.host import collectors, metrics
 
     monkeypatch.setattr(
-        metrics, "collect_limits", lambda *_a, **_k: metrics.Limits(2, 8 * 1024**3, 10 * 1024**3, "C:\\")
+        metrics,
+        "collect_limits",
+        lambda *_a, **_k: metrics.Limits(2, 8 * 1024**3, 10 * 1024**3, "C:\\"),
     )
 
     info = collectors.collect_host_info(git_enabled=False)
@@ -41,8 +43,8 @@ def test_collected_host_info_fills_machine_limits(monkeypatch) -> None:
     assert info.disk_path == "C:\\"
 
 
-def test_protocol_version_is_3() -> None:
+def test_protocol_version_is_4() -> None:
     from jaylog._version import PROTOCOL_VERSION
 
-    assert PROTOCOL_VERSION == 3
-    assert HostInfo().protocol_version == 3
+    assert PROTOCOL_VERSION == 4
+    assert HostInfo().protocol_version == 4

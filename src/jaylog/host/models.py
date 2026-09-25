@@ -10,7 +10,6 @@ omitido: o backend precisa distinguir "o cliente não soube responder"
 ausente porque o cliente é antigo".
 """
 
-
 from pydantic import BaseModel
 
 from jaylog._version import PROTOCOL_VERSION, __version__

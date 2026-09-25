@@ -10,7 +10,7 @@ from jaylog.filters import ExceptionFlagFilter
 from jaylog.handlers.console_handler import JaylogConsoleHandler
 from jaylog.handlers.file_handler import JaylogFileHandler
 from jaylog.handlers.http_handler import JaylogHttpHandler
-from jaylog.host import metrics_reporter, reporter
+from jaylog.host import metrics_reporter, reporter, schedule_reporter, win32
 from jaylog.host.collectors import collect_host_info
 from jaylog.host.metrics_reporter import JaylogMetricsReporter
 from jaylog.host.payload import build_host_payload
@@ -71,6 +71,7 @@ def configure(settings: JaylogSettings | list[JaylogSettings]) -> None:
     _warn_insecure_transport(items)
     _start_host_reporters(items)
     _start_metrics_reporter(items)
+    _start_schedule_reporter(items)
 
 
 def _warn_insecure_transport(items: list[JaylogSettings]) -> None:
@@ -154,6 +155,35 @@ def _start_metrics_reporter(items: list[JaylogSettings]) -> None:
                 timeout=item.log_http_timeout,
                 proxy=item.log_http_proxy,
                 verify=item.log_http_verify,
+            )
+        )
+        return
+
+
+def _start_schedule_reporter(items: list[JaylogSettings]) -> None:
+    """Um envio de agendas por processo, ligado ao primeiro serviço elegível."""
+    if not win32.is_windows():
+        return
+    for item in items:
+        if not item.host_schedule_enabled:
+            continue
+        endpoint = item.effective_host_schedule_endpoint
+        if not endpoint or not item.log_http_api_key:
+            continue
+        schedule_reporter.start(
+            JaylogHostReporter(
+                service=item.app_name,
+                endpoint=endpoint,
+                api_key=item.log_http_api_key,
+                timeout=item.effective_host_timeout,
+                proxy=item.log_http_proxy,
+                verify=item.log_http_verify,
+                payload_factory=schedule_reporter.payload_factory(
+                    item.app_name, item.host_schedule_timeout
+                ),
+                label="schedule",
+                noun="agendas",
+                one_shot=True,
             )
         )
         return
@@ -348,8 +378,12 @@ def shutdown(name: str | None = None) -> None:
     if name is None:
         reporter.stop_all()
         metrics_reporter.stop()
+        schedule_reporter.stop()
     else:
         reporter.stop(name)
         active = metrics_reporter.active()
         if active is not None and active.service == name:
             metrics_reporter.stop()
+        scheduled = schedule_reporter.active()
+        if scheduled is not None and scheduled.service == name:
+            schedule_reporter.stop()

@@ -59,3 +59,24 @@ def test_resend_is_debounced() -> None:
     assert reporter.request_resend() is True
     assert reporter.sent is False
     assert reporter.request_resend() is False
+
+
+def test_none_payload_does_not_send_or_turn_fatal() -> None:
+    reporter, session = make_reporter([])
+    reporter._payload_factory = lambda: None
+
+    reporter.deliver()
+
+    assert session.calls == 0
+    assert reporter.fatal is False
+
+
+def test_one_shot_stops_after_first_delivery_round() -> None:
+    reporter, session = make_reporter([202])
+    reporter._one_shot = True
+    reporter.start()
+    assert reporter._thread is not None
+    reporter._thread.join(1)
+
+    assert not reporter._thread.is_alive()
+    assert session.calls == 1

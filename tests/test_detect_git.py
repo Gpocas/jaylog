@@ -1,3 +1,6 @@
+import sys
+import types
+
 from jaylog.host import detect_git
 
 
@@ -49,3 +52,20 @@ def test_collects_detached_repo_and_redacts_remote(monkeypatch, tmp_path) -> Non
     assert info.commit_datetime == "2026-09-16T19:25:39-03:00"
     assert info.dirty is False
     assert info.remote_url == "https://github.com/org/repo.git"
+
+
+def test_entrypoint_path_and_dir_use_main_script(monkeypatch, tmp_path) -> None:
+    script = tmp_path / "main.py"
+    monkeypatch.setitem(sys.modules, "__main__", types.SimpleNamespace(__file__=str(script)))
+    monkeypatch.delattr(sys, "frozen", raising=False)
+
+    assert detect_git.entrypoint_path() == str(script)
+    assert detect_git.entrypoint_dir() == str(tmp_path)
+
+
+def test_entrypoint_path_uses_executable_when_frozen(monkeypatch, tmp_path) -> None:
+    executable = tmp_path / "bot.exe"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(executable))
+
+    assert detect_git.entrypoint_path() == str(executable)

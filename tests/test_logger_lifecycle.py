@@ -117,3 +117,27 @@ def test_metrics_follow_host_report_switch(monkeypatch) -> None:
 
     assert started == []
     assert metrics_reporter.active() is None
+
+
+def test_configure_starts_schedule_reporter_only_on_windows(monkeypatch) -> None:
+    from jaylog.host import schedule_reporter
+    from jaylog.host.reporter import JaylogHostReporter
+
+    started: list[JaylogHostReporter] = []
+    monkeypatch.setattr(logger_module, "_start_host_reporters", lambda items: None)
+    monkeypatch.setattr(logger_module, "_start_metrics_reporter", lambda items: None)
+    monkeypatch.setattr(logger_module.win32, "is_windows", lambda: True)
+    monkeypatch.setattr(JaylogHostReporter, "start", lambda self: started.append(self))
+
+    configure([_http_settings("ORDERS"), _http_settings("BILLING")])
+
+    assert len(started) == 1
+    active = schedule_reporter.active()
+    assert active is started[0]
+    assert active.service == "ORDERS"
+    assert active.endpoint == "https://api.example/logs/host-schedules"
+    assert active.label == "schedule"
+    assert active._one_shot is True
+
+    shutdown()
+    assert schedule_reporter.active() is None

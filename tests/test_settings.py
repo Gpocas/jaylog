@@ -32,7 +32,10 @@ def test_host_metrics_endpoint_override_and_missing_log_endpoint() -> None:
     )
     assert override.effective_host_metrics_endpoint == "https://other/metrics"
 
-    assert JaylogSettings(app_name="ORDERS", log_http_endpoint=None).effective_host_metrics_endpoint is None
+    assert (
+        JaylogSettings(app_name="ORDERS", log_http_endpoint=None).effective_host_metrics_endpoint
+        is None
+    )
 
 
 def test_host_metrics_interval_has_a_floor() -> None:
@@ -41,3 +44,24 @@ def test_host_metrics_interval_has_a_floor() -> None:
 
     with pytest.raises(pydantic.ValidationError):
         JaylogSettings(app_name="ORDERS", host_metrics_interval=5)
+
+
+def test_host_schedule_settings_defaults_and_derived_endpoint() -> None:
+    settings = JaylogSettings(app_name="ORDERS", log_http_endpoint="https://api.example/logs/add")
+
+    assert settings.host_schedule_enabled is True
+    assert settings.host_schedule_timeout == 10
+    assert settings.effective_host_schedule_endpoint == "https://api.example/logs/host-schedules"
+
+
+def test_host_schedule_endpoint_override_and_missing_log_endpoint() -> None:
+    override = JaylogSettings(
+        app_name="ORDERS",
+        log_http_endpoint="https://api.example/logs/add",
+        host_schedule_http_endpoint="https://other/schedules",
+    )
+    assert override.effective_host_schedule_endpoint == "https://other/schedules"
+    assert (
+        JaylogSettings(app_name="ORDERS", log_http_endpoint=None).effective_host_schedule_endpoint
+        is None
+    )

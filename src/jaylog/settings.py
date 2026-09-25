@@ -168,6 +168,25 @@ class JaylogSettings(BaseSettings):
 
         return derive_endpoint(self.log_http_endpoint, "host-metrics")
 
+    # ------------------------------------------------------------------
+    # Agendas do Task Scheduler — envio único quando o bot veio dele
+    # ------------------------------------------------------------------
+
+    host_schedule_enabled: bool = True
+    host_schedule_http_endpoint: str | None = None
+    host_schedule_timeout: float = 10.0
+
+    @property
+    def effective_host_schedule_endpoint(self) -> str | None:
+        """URL de ``POST /logs/host-schedules``, por override ou derivação."""
+        if self.host_schedule_http_endpoint:
+            return self.host_schedule_http_endpoint
+        if not self.log_http_endpoint:
+            return None
+        from jaylog.endpoints import derive_endpoint
+
+        return derive_endpoint(self.log_http_endpoint, "host-schedules")
+
     @field_validator("host_metrics_interval", mode="after")
     @classmethod
     def validate_host_metrics_interval(cls, v: float) -> float:
