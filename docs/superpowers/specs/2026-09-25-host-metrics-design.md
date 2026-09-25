@@ -239,7 +239,7 @@ preenchidos.
 ## 6. Documentação e versão
 
 - `README.md`: menção curta às métricas e às 3 variáveis; detalhe no jaylog-book.
-- `pyproject.toml`: `psutil>=6.1,<8` (6.1 é a primeira com wheel para 3.13) em `dependencies`; versão `0.3.0a4`.
+- `pyproject.toml`: `psutil>=5.9.6,<8` (5.9.6 é a primeira com wheel `cp37-abi3`, que cobre 3.10–3.13 no Windows e no Linux sem compilar) em `dependencies`; versão `0.3.0a4`.
 
 ## 7. Ordem de entrega
 
