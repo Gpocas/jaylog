@@ -16,7 +16,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from jaylog.host import detect_execution, detect_git, detect_python, detect_venv, identity
+from jaylog.host import detect_execution, detect_git, detect_python, detect_venv, identity, metrics
 from jaylog.host._safe import safe
 from jaylog.host.models import HostInfo
 
@@ -60,11 +60,17 @@ def _collect(
         remote_enabled=git_remote_enabled,
     )
 
+    limits = metrics.collect_limits()
+
     return HostInfo(
         collected_at=datetime.now(timezone.utc).isoformat(),
         hostname=identity.hostname(),
         username=identity.username(),
         ipv4=identity.ipv4(),
+        cpu_count=limits.cpu_count,
+        memory_total_bytes=limits.memory_total_bytes,
+        disk_total_bytes=limits.disk_total_bytes,
+        disk_path=limits.disk_path,
         os_system=os_system,
         os_release=os_release,
         os_version=os_version,

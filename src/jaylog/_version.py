@@ -9,7 +9,8 @@ from importlib.metadata import PackageNotFoundError, version
 
 #: Versão do contrato cliente <-> backend. Vai no header ``x-jaylog-protocol``
 #: e no payload de host. Mede o rollout; não dirige lógica no backend.
-PROTOCOL_VERSION = 2
+#: 3: limites da máquina no payload de host + ``POST /logs/host-metrics``.
+PROTOCOL_VERSION = 3
 
 try:
     __version__ = version("jaylog")
