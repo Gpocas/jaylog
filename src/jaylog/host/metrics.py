@@ -314,7 +314,9 @@ class MetricsSampler:
 
         cpu_count = self._cpu_count
         if elapsed > 0 and cpu_count:
-            sample["proc_cpu_pct"] = round(min(max(cpu / (elapsed * cpu_count) * 100, 0.0), 100.0), 1)
+            sample["proc_cpu_pct"] = round(
+                min(max(cpu / (elapsed * cpu_count) * 100, 0.0), 100.0), 1
+            )
 
         if io_known and not io_negative:
             sample["proc_io_read_bytes"] = io_read

@@ -369,6 +369,8 @@ def test_volume_root_on_posix_is_a_mount_point(tmp_path):
 def test_volume_root_on_windows_is_the_drive(monkeypatch, path, expected):
     import ntpath
 
-    monkeypatch.setattr(metrics, "os", SimpleNamespace(path=ntpath, sep="\\", getcwd=lambda: "C:\\"))
+    monkeypatch.setattr(
+        metrics, "os", SimpleNamespace(path=ntpath, sep="\\", getcwd=lambda: "C:\\")
+    )
 
     assert volume_root(path) == expected

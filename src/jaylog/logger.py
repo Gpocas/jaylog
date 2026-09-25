@@ -10,8 +10,9 @@ from jaylog.filters import ExceptionFlagFilter
 from jaylog.handlers.console_handler import JaylogConsoleHandler
 from jaylog.handlers.file_handler import JaylogFileHandler
 from jaylog.handlers.http_handler import JaylogHttpHandler
-from jaylog.host import reporter
+from jaylog.host import metrics_reporter, reporter
 from jaylog.host.collectors import collect_host_info
+from jaylog.host.metrics_reporter import JaylogMetricsReporter
 from jaylog.host.payload import build_host_payload
 from jaylog.host.reporter import JaylogHostReporter
 from jaylog.screenshot import configure_screenshot
@@ -69,6 +70,7 @@ def configure(settings: JaylogSettings | list[JaylogSettings]) -> None:
 
     _warn_insecure_transport(items)
     _start_host_reporters(items)
+    _start_metrics_reporter(items)
 
 
 def _warn_insecure_transport(items: list[JaylogSettings]) -> None:
@@ -127,6 +129,34 @@ def _start_host_reporters(items: list[JaylogSettings]) -> None:
         )
         reporter.register(host_reporter)
         host_reporter.start()
+
+
+def _start_metrics_reporter(items: list[JaylogSettings]) -> None:
+    """
+    Um coletor de métricas por processo, vinculado ao primeiro item elegível.
+
+    CPU e memória são do processo: um coletor por ``app_name`` mandaria a mesma
+    amostra várias vezes. O ``service`` do vínculo só serve para o backend
+    validar o serviço e para o pedido de reenvio do registro de host.
+    """
+    for item in items:
+        if not (item.host_report_enabled and item.host_metrics_enabled):
+            continue
+        endpoint = item.effective_host_metrics_endpoint
+        if not endpoint or not item.log_http_api_key:
+            continue
+        metrics_reporter.start(
+            JaylogMetricsReporter(
+                service=item.app_name,
+                endpoint=endpoint,
+                api_key=item.log_http_api_key,
+                interval=item.host_metrics_interval,
+                timeout=item.log_http_timeout,
+                proxy=item.log_http_proxy,
+                verify=item.log_http_verify,
+            )
+        )
+        return
 
 
 def _register_shutdown_hooks() -> None:
@@ -317,5 +347,9 @@ def shutdown(name: str | None = None) -> None:
 
     if name is None:
         reporter.stop_all()
+        metrics_reporter.stop()
     else:
         reporter.stop(name)
+        active = metrics_reporter.active()
+        if active is not None and active.service == name:
+            metrics_reporter.stop()

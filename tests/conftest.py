@@ -5,7 +5,7 @@ import pytest
 def reset_jaylog_state():
     """Isola os caches e threads globais entre os testes."""
     from jaylog import logger
-    from jaylog.host import identity, reporter
+    from jaylog.host import identity, metrics_reporter, reporter
     from jaylog.host.collectors import reset_cache
     from jaylog.screenshot import configure_screenshot, reset_desktop_cache
 
@@ -16,6 +16,7 @@ def reset_jaylog_state():
     configure_screenshot(False)
     reset_desktop_cache()
     reporter._unsupported_warned = False
+    metrics_reporter._unsupported_warned = False
     yield
     logger.shutdown()
     logger._settings_registry.clear()
@@ -24,3 +25,4 @@ def reset_jaylog_state():
     configure_screenshot(False)
     reset_desktop_cache()
     reporter._unsupported_warned = False
+    metrics_reporter._unsupported_warned = False

@@ -67,7 +67,9 @@ def test_posts_contract_envelope_and_clears_buffer_on_success():
     reporter.collect()
     assert reporter.flush() is True
 
-    assert session.bodies == [{"run_id": RUN_ID, "service": "ORDERS", "samples": [{"sampled_at": "t2"}]}]
+    assert session.bodies == [
+        {"run_id": RUN_ID, "service": "ORDERS", "samples": [{"sampled_at": "t2"}]}
+    ]
     assert len(reporter.buffer) == 0
     assert session.headers["x-api-key"] == "key"
     assert session.headers["x-jaylog-run-id"] == RUN_ID
