@@ -68,9 +68,11 @@ def collect_schedules(*, timeout: float) -> list[dict] | None: ...   # @safe(def
 - `subprocess.run(["schtasks", "/query", "/xml"], timeout=…, stdin=DEVNULL,
   capture_output=True, creationflags=CREATE_NO_WINDOW)` — mesmo padrão de
   `detect_git._run_git` (reaproveitar `_popen_kwargs`).
-- **Encoding:** a saída redirecionada vem na codepage OEM (cp850 em pt-BR). Decodificar
-  com `cp{GetOEMCP()}` (novo `win32.oem_codepage()` via ctypes), fallback `mbcs`, e só
-  então parsear. Validar numa VM Windows real com task/caminho acentuado.
+- **Encoding:** a saída redirecionada vem, em geral, na codepage OEM (cp850 em pt-BR).
+  Decodificar tentando, em ordem: BOM UTF-16; UTF-8 estrito (cobre OEMCP=65001, e cp850
+  com acento nunca é UTF-8 válido); `cp{GetOEMCP()}` (novo `win32.oem_codepage()` via
+  ctypes); `mbcs`; por fim UTF-8 com `replace`. Só então parsear. Validar numa VM Windows
+  real com task/caminho acentuado.
 - A saída é `<Tasks>` com um comentário `<!-- \Pasta\Nome -->` antes de cada `<Task>`.
   Parsear com `ET.XMLParser(target=ET.TreeBuilder(insert_comments=True))` e associar cada
   `<Task>` ao comentário anterior. Namespace
@@ -181,16 +183,18 @@ vazio = indefinido):
 - **Contagem por dia > 24 → o trigger inteiro vira `CONTINUO`.** "Por dia" = maior número
   de horários que caem num mesmo dia de calendário (ex.: seg 22:00 a cada 1 h por 30 h
   gera 2 na segunda, 24 na terça, 4 na quarta → 24, não vira `CONTINUO`).
-- `DIARIO`: horários passando da meia-noite são tomados módulo 24 h (exato: roda todo dia).
-- `SEMANA`: horário que passa da meia-noite vai para o dia da semana seguinte
-  (`SATURDAY` → `SUNDAY`).
+- `DIARIO` (`D` finito, qualquer tamanho): horários tomados módulo 24 h e unidos. É exato
+  porque o trigger recomeça todo dia — inclusive com `D > 24 h`, em que as cadeias de dias
+  seguidos se sobrepõem.
+- `SEMANA` (`D` finito): o mesmo, módulo 7 dias a partir de cada dia marcado; horário que
+  passa da meia-noite vai para o dia da semana seguinte (`SATURDAY` → `SUNDAY`).
 - `DIA`: repetição que passa da meia-noite → **trigger ignorado** (dia 30 + 1 cai em 31 ou
   em 1 conforme o mês).
-- **Indefinido** (ou `D > 24 h` em `DIARIO`/`TimeTrigger`, ou `D ≥ 7 d` em `SEMANA`): o
-  trigger roda a cada `I` para sempre a partir do primeiro disparo. Se
-  `24 h / I > 24` → `CONTINUO`; se `24 h` é múltiplo de `I` → `DIARIO` com os
-  `24 h / I` horários a partir de `T`; senão (horário deriva a cada dia) → ignorado.
-  Em `DIA` indefinido segue a mesma regra (vira `DIARIO`/`CONTINUO`/ignorado).
+- **Indefinido** (`Duration` ausente, em qualquer trigger): roda a cada `I` para sempre a
+  partir do primeiro disparo. Se `24 h / I > 24` → `CONTINUO`; se `24 h` é múltiplo de `I`
+  → `DIARIO` com os `24 h / I` horários a partir de `T`; senão (horário deriva a cada dia)
+  → ignorado.
+- `TimeTrigger` ("uma vez") só é mapeado com repetição indefinida (regra acima).
 
 ### 4.4 Consolidação
 
@@ -210,7 +214,10 @@ vazio = indefinido):
 - `ScheduleByMonthDayOfWeek` ("1ª segunda do mês").
 - `TimeTrigger` sem repetição ou com repetição de duração finita (não recorrente).
 - `IdleTrigger`, `EventTrigger`, `RegistrationTrigger`, `SessionStateChangeTrigger`.
-- Qualquer elemento desconhecido/inesperado no trigger.
+- `RandomDelay` ("atrasar aleatoriamente") em trigger de horário — o horário real é incerto.
+- Qualquer outro elemento desconhecido no trigger. São neutros (não mudam quando dispara):
+  `StartBoundary`, `EndBoundary`, `Enabled`, `ExecutionTimeLimit`, `Repetition` e o
+  `ScheduleBy*`. `Boot`/`Logon` viram `CONTINUO` sem olhar os filhos (`Delay`, `UserId`).
 
 ## 5. Tratamento de erros
 
