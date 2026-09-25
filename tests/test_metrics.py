@@ -281,18 +281,50 @@ def test_io_delta():
     assert sample["proc_io_write_bytes"] == 200
 
 
-def test_negative_io_delta_becomes_none():
+def test_counters_going_backwards_mean_a_recycled_pid():
+    sampler, ps, clock = make_sampler()
+    ps.children = [FakeProc(2, create_time=clock.now - 50, cpu=40.0, io=(1000, 500))]
+    sampler.sample()
+
+    advance(ps, clock, busy=1, idle=1)
+    # PID reaproveitado logo em seguida (Windows): create_time dentro da folga,
+    # mas contadores menores que os do processo antigo
+    ps.children = [FakeProc(2, create_time=clock.now - 40, cpu=6.0, io=(10, 5))]
+
+    sample = sampler.sample()
+
+    assert sample["proc_cpu_pct"] == 5.0
+    assert sample["proc_io_read_bytes"] == 10
+    assert sample["proc_io_write_bytes"] == 5
+
+
+def test_create_time_jitter_does_not_drop_the_process():
+    # WSL: o btime salta alguns segundos e o create_time do mesmo processo muda
     sampler, ps, clock = make_sampler()
     ps.me.io = (1000, 500)
     sampler.sample()
 
     advance(ps, clock, busy=1, idle=1)
-    ps.me.io = (10, 5)
+    ps.me.create += 3.0
+    ps.me.cpu += 12.0
+    ps.me.io = (4000, 700)
 
     sample = sampler.sample()
 
-    assert sample["proc_io_read_bytes"] is None
-    assert sample["proc_io_write_bytes"] is None
+    assert sample["proc_cpu_pct"] == 10.0
+    assert sample["proc_io_read_bytes"] == 3000
+
+
+def test_child_born_right_after_previous_sample_counts_despite_coarse_create_time():
+    # Linux: create_time pode ficar até ~1 s atrás do relógio de parede
+    sampler, ps, clock = make_sampler()
+    sampler.sample()
+    born_reported = clock.now - 0.8
+
+    advance(ps, clock, busy=1, idle=1)
+    ps.children = [FakeProc(2, create_time=born_reported, cpu=12.0)]
+
+    assert sampler.sample()["proc_cpu_pct"] == 10.0
 
 
 def test_io_unavailable_on_platform_becomes_none():

@@ -50,6 +50,15 @@ class _ProcReading(NamedTuple):
     io_write: int | None
 
 
+#: Folga ao comparar ``create_time``. No Linux o psutil o calcula como ``btime``
+#: (hora do boot, *inteira*, de ``/proc/stat``) + ticks desde o boot: o valor
+#: fica até ~1 s atrás do relógio de parede e, no WSL, salta alguns segundos
+#: quando o ``btime`` é recalculado. Comparar à risca descartava o próprio bot
+#: da conta. Reuso de PID dentro dessa janela é coberto pelo contador que anda
+#: para trás (ver ``_is_same_process``).
+CREATE_TIME_TOLERANCE = 5.0
+
+
 def import_psutil():
     """O módulo ``psutil``, ou ``None`` se ele não carregar nesta plataforma."""
     try:
@@ -274,12 +283,12 @@ class MetricsSampler:
         """
         Soma a árvore do processo, confrontando cada PID com a leitura anterior:
 
-        - mesmo PID e mesmo ``create_time`` -> contribui o delta;
+        - mesmo processo da leitura anterior -> contribui o delta;
         - PID novo nascido depois da amostra anterior -> contribui tudo (todo o
           consumo dele cabe no intervalo);
         - PID novo que já existia (visto agora pela primeira vez) -> só entra na
           base; contar o total dele despejaria horas de CPU num minuto;
-        - reuso de PID aparece como ``create_time`` diferente -> processo novo.
+        - reuso de PID -> processo novo.
 
         Um filho que morreu no intervalo perde a contribuição desse último
         trecho: subestimação pequena, aceita em troca de não precisar de hooks
@@ -290,13 +299,12 @@ class MetricsSampler:
         cpu = 0.0
         io_read = io_write = 0
         io_known = False
-        io_negative = False
 
         for pid, cur in tree.items():
             old = self._prev_tree.get(pid)
-            if old is not None and abs(old.create_time - cur.create_time) < 1e-3:
+            if old is not None and _is_same_process(old, cur):
                 base = old
-            elif cur.create_time > prev_time:
+            elif cur.create_time > prev_time - CREATE_TIME_TOLERANCE:
                 base = None
             else:
                 continue
@@ -304,12 +312,8 @@ class MetricsSampler:
             cpu += cur.cpu_seconds - (base.cpu_seconds if base else 0.0)
 
             if cur.io_read is not None and (base is None or base.io_read is not None):
-                read = cur.io_read - (base.io_read if base else 0)
-                write = cur.io_write - (base.io_write if base else 0)
-                if read < 0 or write < 0:
-                    io_negative = True
-                io_read += read
-                io_write += write
+                io_read += cur.io_read - (base.io_read if base else 0)
+                io_write += cur.io_write - (base.io_write if base else 0)
                 io_known = True
 
         cpu_count = self._cpu_count
@@ -318,7 +322,7 @@ class MetricsSampler:
                 min(max(cpu / (elapsed * cpu_count) * 100, 0.0), 100.0), 1
             )
 
-        if io_known and not io_negative:
+        if io_known:
             sample["proc_io_read_bytes"] = io_read
             sample["proc_io_write_bytes"] = io_write
 
@@ -329,7 +333,25 @@ class MetricsSampler:
                 sample["proc_mem_pct"] = _pct(rss, memory[0])
 
 
+def _is_same_process(old: _ProcReading, cur: _ProcReading) -> bool:
+    """
+    Mesmo PID e ``create_time`` dentro da folga — e nenhum contador andou para
+    trás. Contadores de um processo só crescem; se CPU ou E/S diminuíram, o PID
+    foi reciclado (comum no Windows, que reaproveita PIDs cedo) e o processo é
+    outro.
+    """
+    if abs(old.create_time - cur.create_time) >= CREATE_TIME_TOLERANCE:
+        return False
+    if cur.cpu_seconds < old.cpu_seconds:
+        return False
+    if old.io_read is not None and cur.io_read is not None:
+        if cur.io_read < old.io_read or cur.io_write < old.io_write:
+            return False
+    return True
+
+
 __all__ = [
+    "CREATE_TIME_TOLERANCE",
     "SAMPLE_FIELDS",
     "Limits",
     "MetricsSampler",

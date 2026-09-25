@@ -76,18 +76,26 @@ Cálculos:
   Chrome/Excel; o custo real está nos filhos.
   Estado anterior por PID: `{pid: (create_time, cpu_seconds, io_read, io_write)}`.
   Para cada processo da árvore atual:
-  - PID presente no estado anterior **com o mesmo `create_time`** → contribui o delta;
-  - PID novo com `create_time` **posterior** à amostra anterior → nasceu no intervalo,
-    contribui o valor total;
-  - PID novo com `create_time` anterior (já existia, primeira vez visto) → só entra na base;
+  - PID presente no estado anterior, `create_time` dentro da folga de **5 s** e nenhum
+    contador (CPU, E/S) menor que antes → mesmo processo, contribui o delta;
+  - caso contrário, `create_time` posterior a `amostra anterior − 5 s` → nasceu no
+    intervalo (ou é PID reciclado), contribui o valor total;
+  - senão (já existia, primeira vez visto) → só entra na base;
   - processo que morre durante a leitura (`NoSuchProcess`, `AccessDenied`) → ignorado.
   - PIDs que sumiram (filho morreu no intervalo) perdem a contribuição do último
     intervalo — subestimação aceita e documentada no código.
+
+  Por que a folga: no Linux o psutil calcula `create_time` como `btime` (inteiro, de
+  `/proc/stat`) + ticks, então ele fica até ~1 s atrás do relógio de parede; no WSL o
+  `btime` salta alguns segundos (observado: 3 s). Comparação exata descartava o próprio
+  bot da conta. Reuso de PID dentro da folga (Windows recicla PIDs cedo) é detectado
+  pelo contador que anda para trás.
 - **`proc_cpu_pct`**: `Σ Δcpu_seconds / (Δwall * cpu_count) * 100`, limitado a 0–100.
 - **`proc_mem_bytes`**: `Σ memory_info().rss` da árvore. **`proc_mem_pct`**:
   `proc_mem_bytes / memory_total_bytes * 100`.
 - **`proc_io_read_bytes` / `proc_io_write_bytes`**: `Σ Δio_counters().read_bytes/
-  write_bytes`. Delta negativo → `null`. Plataforma sem `io_counters` (macOS) → `null`.
+  write_bytes`. Contador que anda para trás é tratado como processo novo (regra acima),
+  então o total nunca é negativo. Plataforma sem `io_counters` (macOS) → `null`.
   Nome `io` e não `disk`: no Windows o contador soma toda E/S (arquivo, rede, dispositivo).
 
 ### 3.2 `jaylog/host/metrics_reporter.py` — `JaylogMetricsReporter`
@@ -209,7 +217,9 @@ tabela de tratamento no 3.2.
 - `proc_cpu_pct` normalizado por `cpu_count` e limitado a 100;
 - soma dos filhos; filho que nasce no intervalo conta inteiro; filho pré-existente visto
   pela primeira vez só entra na base; filho que levanta `NoSuchProcess` é ignorado;
-- delta de I/O negativo → `null`; `io_counters` ausente → `null`;
+- contador que anda para trás = PID reciclado; `create_time` com oscilação de 3 s não
+  descarta o processo; filho com `create_time` 0,8 s antes da amostra anterior conta;
+  `io_counters` ausente → `null`;
 - um campo levantando exceção não derruba os outros;
 - `collect_limits` devolve a raiz do volume em `disk_path`.
 
