@@ -31,6 +31,12 @@ class HostInfo(BaseModel):
     username: str | None = None
     ipv4: str | None = None
 
+    # --- limites da máquina (teto dos gráficos de /logs/host-metrics) ---
+    cpu_count: int | None = None
+    memory_total_bytes: int | None = None
+    disk_total_bytes: int | None = None
+    disk_path: str | None = None
+
     # --- sistema operacional ---
     os_system: str | None = None
     os_release: str | None = None
