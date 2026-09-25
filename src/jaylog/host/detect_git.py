@@ -68,6 +68,20 @@ def redact_remote_url(url: str) -> str:
     return _CREDENTIAL_RE.sub("//", url)
 
 
+def entrypoint_path() -> str | None:
+    """Arquivo que iniciou o processo: script de ``__main__`` ou .exe frozen."""
+    try:
+        if getattr(sys, "frozen", False):
+            return os.path.abspath(sys.executable)
+        main = sys.modules.get("__main__")
+        main_file = getattr(main, "__file__", None)
+        if main_file:
+            return os.path.abspath(main_file)
+    except Exception:
+        return None
+    return None
+
+
 def entrypoint_dir() -> str | None:
     """
     Diretório do script (ou do ``.exe``) que iniciou o processo.
@@ -75,16 +89,8 @@ def entrypoint_dir() -> str | None:
     É o ponto de partida da busca pelo repositório e também o campo
     ``entrypoint`` do payload.
     """
-    try:
-        if getattr(sys, "frozen", False):
-            return os.path.dirname(os.path.abspath(sys.executable))
-        main = sys.modules.get("__main__")
-        main_file = getattr(main, "__file__", None)
-        if main_file:
-            return os.path.dirname(os.path.abspath(main_file))
-    except Exception:
-        return None
-    return None
+    path = entrypoint_path()
+    return os.path.dirname(path) if path else None
 
 
 def git_search_dir(override: Path | str | None = None) -> str:
@@ -207,6 +213,7 @@ __all__ = [
     "GIT_UNKNOWN",
     "detect_git",
     "redact_remote_url",
+    "entrypoint_path",
     "entrypoint_dir",
     "git_search_dir",
 ]

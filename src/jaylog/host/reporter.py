@@ -40,11 +40,11 @@ RESEND_DEBOUNCE_SECONDS = 30.0
 
 _STOP_JOIN_TIMEOUT = 2.0
 
-_unsupported_warned = False
+_unsupported_warned: set[str] = set()
 
 
-def _warn(message: str) -> None:
-    print(f"[jaylog] host: {message}", file=sys.stderr)
+def _warn(message: str, label: str = "host") -> None:
+    print(f"[jaylog] {label}: {message}", file=sys.stderr)
 
 
 class JaylogHostReporter:
@@ -67,11 +67,17 @@ class JaylogHostReporter:
         session=None,
         backoff=DEFAULT_BACKOFF,
         payload_factory=None,
+        label: str = "host",
+        noun: str = "ambiente",
+        one_shot: bool = False,
     ) -> None:
         self.service = service
         self.endpoint = endpoint
         self.timeout = timeout
         self.verify = verify
+        self.label = label
+        self.noun = noun
+        self._one_shot = one_shot
 
         #: entregue com sucesso — não há mais nada a fazer
         self.sent = False
@@ -104,7 +110,7 @@ class JaylogHostReporter:
             return
         self._thread = threading.Thread(
             target=self._run,
-            name=f"jaylog-host-{self.service}",
+            name=f"jaylog-{self.label}-{self.service}",
             daemon=True,
         )
         self._thread.start()
@@ -146,7 +152,7 @@ class JaylogHostReporter:
     def _run(self) -> None:
         while not self._stop.is_set():
             self.deliver()
-            if self._stop.is_set():
+            if self._stop.is_set() or self._one_shot:
                 return
             # dorme até um request_resend() (ou até o stop). Sem polling.
             self._wakeup.wait()
@@ -170,13 +176,14 @@ class JaylogHostReporter:
 
     def _post_once(self) -> bool | None:
         """``True`` = entregue, ``False`` = tentar de novo, ``None`` = desistir."""
-        global _unsupported_warned
-
         try:
             payload = self._payload_factory()
         except Exception as exc:  # pragma: no cover - coletor já é @safe
-            _warn(f"falha ao montar o payload de {self.service}: {exc}")
+            _warn(f"falha ao montar o payload de {self.service}: {exc}", self.label)
             self.fatal = True
+            return None
+
+        if payload is None:
             return None
 
         try:
@@ -201,24 +208,26 @@ class JaylogHostReporter:
             # banda até o fim do processo. É por isso que o contrato exige que
             # "serviço desconhecido" devolva 422, e nunca 404.
             self.unsupported = True
-            if not _unsupported_warned:
-                _unsupported_warned = True
+            if self.label not in _unsupported_warned:
+                _unsupported_warned.add(self.label)
                 _warn(
                     f"o backend não suporta POST {self.endpoint} (HTTP {status}); "
-                    "o registro de ambiente foi desativado neste processo"
+                    f"o registro de {self.noun} foi desativado neste processo",
+                    self.label,
                 )
             return None
 
         if status in (401, 403):
             self.fatal = True
-            _warn(f"autenticação recusada em {self.endpoint} (HTTP {status})")
+            _warn(f"autenticação recusada em {self.endpoint} (HTTP {status})", self.label)
             return None
 
         if status == 422:
             self.fatal = True
             _warn(
-                f"payload de ambiente rejeitado para '{self.service}' (HTTP 422): "
-                f"{_body_excerpt(response)}"
+                f"payload de {self.noun} rejeitado para '{self.service}' (HTTP 422): "
+                f"{_body_excerpt(response)}",
+                self.label,
             )
             return None
 
@@ -227,7 +236,7 @@ class JaylogHostReporter:
 
         # demais 4xx: erro do cliente, repetir não muda o resultado
         self.fatal = True
-        _warn(f"POST {self.endpoint} devolveu HTTP {status}; desistindo")
+        _warn(f"POST {self.endpoint} devolveu HTTP {status}; desistindo", self.label)
         return None
 
 

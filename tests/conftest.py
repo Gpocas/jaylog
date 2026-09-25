@@ -15,7 +15,7 @@ def reset_jaylog_state():
     reset_cache()
     configure_screenshot(False)
     reset_desktop_cache()
-    reporter._unsupported_warned = False
+    reporter._unsupported_warned.clear()
     metrics_reporter._unsupported_warned = False
     yield
     logger.shutdown()
@@ -24,5 +24,5 @@ def reset_jaylog_state():
     reset_cache()
     configure_screenshot(False)
     reset_desktop_cache()
-    reporter._unsupported_warned = False
+    reporter._unsupported_warned.clear()
     metrics_reporter._unsupported_warned = False

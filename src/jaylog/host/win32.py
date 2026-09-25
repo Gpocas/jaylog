@@ -120,6 +120,17 @@ def process_table() -> dict[int, tuple[int, str]]:
     return table
 
 
+@safe(default=None)
+def oem_codepage() -> int | None:
+    """Codepage OEM usada por programas de console com stdout redirecionado."""
+    if not is_windows():
+        return None
+
+    import ctypes
+
+    return int(ctypes.WinDLL("kernel32").GetOEMCP()) or None
+
+
 def ancestry(pid: int, table: dict[int, tuple[int, str]]) -> list[str]:
     """
     Nomes dos processos ancestrais de ``pid``, do pai para cima.
@@ -145,4 +156,11 @@ def ancestry(pid: int, table: dict[int, tuple[int, str]]) -> list[str]:
     return chain
 
 
-__all__ = ["is_windows", "session_id", "process_table", "ancestry", "MAX_ANCESTRY_DEPTH"]
+__all__ = [
+    "is_windows",
+    "session_id",
+    "process_table",
+    "oem_codepage",
+    "ancestry",
+    "MAX_ANCESTRY_DEPTH",
+]

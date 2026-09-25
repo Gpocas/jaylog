@@ -88,3 +88,4 @@ def test_win32_functions_are_safe_off_windows(monkeypatch) -> None:
 
     assert win32.session_id() is None
     assert win32.process_table() == {}
+    assert win32.oem_codepage() is None

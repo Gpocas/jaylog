@@ -2,9 +2,11 @@
 Derivação das URLs de host e de métricas a partir da URL do endpoint de log.
 
 Deploys existentes já configuram ``JAYLOG_LOG_HTTP_ENDPOINT``; trocar o último
-segmento do path (``/logs/add`` -> ``/logs/host``, ``/logs/host-metrics``) evita
+segmento do path (``/logs/add`` -> ``/logs/host``, ``/logs/host-metrics``,
+``/logs/host-schedules``) evita
 exigir uma variável nova de todo mundo. Quem precisar de outro caminho usa
-``JAYLOG_HOST_HTTP_ENDPOINT`` / ``JAYLOG_HOST_METRICS_HTTP_ENDPOINT``.
+``JAYLOG_HOST_HTTP_ENDPOINT`` / ``JAYLOG_HOST_METRICS_HTTP_ENDPOINT`` /
+``JAYLOG_HOST_SCHEDULE_HTTP_ENDPOINT``.
 """
 
 from urllib.parse import urlsplit, urlunsplit
