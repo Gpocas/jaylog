@@ -9,17 +9,14 @@ levanta.
 
 import copy
 import functools
-import os
 import sys
 import traceback
 from collections.abc import Callable
 from typing import Any, TypeVar
 
+from jaylog.diagnostics import emit, is_enabled
+
 F = TypeVar("F", bound=Callable[..., Any])
-
-
-def _debug_enabled() -> bool:
-    return os.environ.get("JAYLOG_DEBUG") == "1"
 
 
 def safe(default: Any = None) -> Callable[[F], F]:
@@ -40,9 +37,13 @@ def safe(default: Any = None) -> Callable[[F], F]:
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
-            except Exception:
-                if _debug_enabled():
-                    print(f"[jaylog] host: falha em {func.__name__}", file=sys.stderr)
+            except Exception as exc:
+                if is_enabled():
+                    emit(
+                        "safe",
+                        f"exceção suprimida pelo coletor `{func.__name__}`; "
+                        f"tipo={type(exc).__name__}",
+                    )
                     traceback.print_exc(file=sys.stderr)
                 # copy para que um default mutável (`{}`, `[]`) não seja
                 # compartilhado entre chamadas.

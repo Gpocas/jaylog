@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import warnings
 
 import requests
@@ -8,6 +7,7 @@ import urllib3
 
 from jaylog._version import PROTOCOL_VERSION, __version__
 from jaylog.context import record_entry, record_screenshot
+from jaylog.diagnostics import emit as debug
 from jaylog.host import reporter
 from jaylog.runtime import RUN_ID
 
@@ -74,27 +74,50 @@ class JaylogHttpHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
+            diagnostic_record = bool(getattr(record, "jaylog_diagnostic", False))
             if self.proxy:
                 self._session.proxies.update(self.proxy)
 
+            fields = self.mapLogRecord(record)
+            if not diagnostic_record:
+                debug(
+                    "http",
+                    f"requisição de log iniciada; método=POST; endpoint={self.endpoint}; "
+                    f"serviço={record.name}; nível={record.levelname}; "
+                    f"captura_anexada={fields.get('log_img') is not None}",
+                )
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
                 response = self._session.post(
                     self.endpoint,
-                    files=_to_multipart(self.mapLogRecord(record)),
+                    files=_to_multipart(fields),
                     timeout=self.timeout,
                     verify=self.verify,
                 )
-                if os.getenv("JAYLOG_HTTP_DEBUG") == "1":
-                    print(response.status_code)
-                    print(response.content)
+            if not diagnostic_record:
+                debug(
+                    "http",
+                    f"resposta de log recebida; endpoint={self.endpoint}; "
+                    f"serviço={record.name}; status={response.status_code}",
+                )
 
-            if response.headers.get(HOST_REQUIRED_HEADER) == "1":
+            if not diagnostic_record and response.headers.get(HOST_REQUIRED_HEADER) == "1":
                 # O log foi aceito (202) — não há nada a reenviar aqui. O que
                 # falta é o registro de ambiente, que o reporter reenvia (com
                 # debounce, porque o header vem em toda linha afetada).
-                reporter.request_resend(record.name)
-        except Exception:
+                accepted = reporter.request_resend(record.name)
+                debug(
+                    "http",
+                    f"backend solicitou sincronização do host; serviço={record.name}; "
+                    f"reenvio_aceito={accepted}",
+                )
+        except Exception as exc:
+            if not bool(getattr(record, "jaylog_diagnostic", False)):
+                debug(
+                    "http",
+                    f"requisição de log falhou; endpoint={self.endpoint}; serviço={record.name}; "
+                    f"tipo={type(exc).__name__}; detalhe={exc}",
+                )
             # `handleError` respeita `logging.raiseExceptions`: barulho em dev,
             # silêncio em produção. O `except: pass` anterior era um buraco
             # negro — era por causa dele que ninguém descobria que o caminho

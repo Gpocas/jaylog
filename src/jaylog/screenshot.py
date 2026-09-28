@@ -16,6 +16,8 @@ Extraído de ``formatters.py``. Duas mudanças de comportamento:
 import io
 import sys
 
+from jaylog.diagnostics import emit as debug
+
 _screenshot_enabled: bool = True
 _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
 _desktop_available: bool | None = None
@@ -25,6 +27,7 @@ _session0_warned = False
 def configure_screenshot(enabled: bool) -> None:
     global _screenshot_enabled
     _screenshot_enabled = enabled
+    debug("screenshot", f"configuração aplicada; habilitada={enabled}")
 
 
 def _has_desktop() -> bool:
@@ -60,8 +63,10 @@ def capture_screenshot() -> bytes | None:
     perder resolução.
     """
     if not _screenshot_enabled:
+        debug("screenshot", "captura não iniciada; motivo=funcionalidade desativada")
         return None
     if not _has_desktop():
+        debug("screenshot", "captura não iniciada; motivo=desktop indisponível")
         return None
     try:
         from PIL import ImageGrab
@@ -93,8 +98,17 @@ def capture_screenshot() -> bytes | None:
                 break
 
         buf.seek(0)
-        return buf.read()
+        result = buf.read()
+        debug(
+            "screenshot",
+            f"captura concluída; bytes={len(result)}; qualidade={quality}; escala={scale:.1f}",
+        )
+        return result
     except Exception as exc:
+        debug(
+            "screenshot",
+            f"captura falhou; tipo={type(exc).__name__}; detalhe={exc}",
+        )
         print(f"[jaylog] screenshot: {exc}", file=sys.stderr)
         return None
 

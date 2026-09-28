@@ -14,6 +14,28 @@ def test_host_settings_and_lazy_log_filename(tmp_path) -> None:
     assert settings.log_filename is not None
     assert settings.host_report_enabled is True
     assert settings.log_http_verify is False
+    assert settings.debug is False
+    assert settings.debug_handlers == "console"
+    assert settings.effective_debug_handlers == {"console"}
+
+
+def test_debug_setting_can_be_loaded_from_environment(monkeypatch) -> None:
+    monkeypatch.setenv("JAYLOG_DEBUG", "true")
+    monkeypatch.setenv("JAYLOG_DEBUG_HANDLERS", " HTTP, file ")
+
+    settings = JaylogSettings(app_name="ORDERS", _env_file=None)
+
+    assert settings.debug is True
+    assert settings.debug_handlers == "file,http"
+    assert settings.effective_debug_handlers == {"file", "http"}
+
+
+def test_debug_handlers_reject_unknown_destination() -> None:
+    import pydantic
+    import pytest
+
+    with pytest.raises(pydantic.ValidationError, match="handlers de diagnóstico inválidos"):
+        JaylogSettings(app_name="ORDERS", debug_handlers="console,database")
 
 
 def test_host_metrics_settings_defaults_and_derived_endpoint() -> None:

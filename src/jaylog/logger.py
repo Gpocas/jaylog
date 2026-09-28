@@ -6,6 +6,7 @@ from logging.handlers import QueueHandler, QueueListener
 from queue import Queue
 from typing import cast
 
+from jaylog import diagnostics
 from jaylog.filters import ExceptionFlagFilter
 from jaylog.handlers.console_handler import JaylogConsoleHandler
 from jaylog.handlers.file_handler import JaylogFileHandler
@@ -27,6 +28,35 @@ _shutdown_registered = False
 _settings_registry: dict[str, JaylogSettings] = {}
 
 _insecure_transport_warned = False
+
+
+class _DiagnosticDestinationFilter(logging.Filter):
+    """Restringe records diagnósticos ao handler explicitamente selecionado."""
+
+    def __init__(self, destination: str) -> None:
+        super().__init__()
+        self.destination = destination
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        destinations = getattr(record, "_jaylog_debug_destinations", None)
+        return destinations is None or self.destination in destinations
+
+
+def _diagnostic_record(service: str, line: str, destinations: frozenset[str]) -> logging.LogRecord:
+    """Cria um record roteável que preserva o nível textual ``DEBUG``."""
+    record = logging.LogRecord(
+        name=service,
+        level=logging.CRITICAL,  # atravessa handlers configurados em INFO/WARNING
+        pathname=__file__,
+        lineno=0,
+        msg=line,
+        args=(),
+        exc_info=None,
+    )
+    record.levelname = "DEBUG"
+    record.jaylog_diagnostic = True
+    record._jaylog_debug_destinations = destinations
+    return record
 
 
 def configure(settings: JaylogSettings | list[JaylogSettings]) -> None:
@@ -56,6 +86,15 @@ def configure(settings: JaylogSettings | list[JaylogSettings]) -> None:
     instantâneo para o chamador.
     """
     items = [settings] if isinstance(settings, JaylogSettings) else list(settings)
+    debug_items = [item for item in items if item.debug]
+    debug_handlers = set().union(
+        *(item.effective_debug_handlers for item in debug_items)
+    ) if debug_items else {"console"}
+    diagnostics.configure(bool(debug_items), debug_handlers)
+    diagnostics.emit(
+        "logger",
+        f"configuração iniciada; serviços={','.join(item.app_name for item in items) or '(nenhum)'}",
+    )
 
     seen: set[str] = set()
     for item in items:
@@ -72,6 +111,7 @@ def configure(settings: JaylogSettings | list[JaylogSettings]) -> None:
     _start_host_reporters(items)
     _start_metrics_reporter(items)
     _start_schedule_reporter(items)
+    diagnostics.emit("logger", "configuração concluída")
 
 
 def _warn_insecure_transport(items: list[JaylogSettings]) -> None:
@@ -100,12 +140,21 @@ def _warn_insecure_transport(items: list[JaylogSettings]) -> None:
 
 def _host_payload_factory(settings: JaylogSettings):
     def factory() -> dict:
+        diagnostics.emit(
+            "host",
+            f"coleta do ambiente iniciada; serviço={settings.app_name}",
+        )
         info = collect_host_info(
             git_enabled=settings.host_git_enabled,
             git_dir=settings.host_git_dir,
             git_timeout=settings.host_git_timeout,
             git_dirty_enabled=settings.host_git_dirty_enabled,
             git_remote_enabled=settings.host_git_remote_enabled,
+        )
+        diagnostics.emit(
+            "host",
+            f"coleta do ambiente concluída; serviço={settings.app_name}; "
+            f"modo_de_execução={info.execution_mode}; repositório_git={info.git_repo}",
         )
         return build_host_payload(settings.app_name, info)
 
@@ -115,10 +164,23 @@ def _host_payload_factory(settings: JaylogSettings):
 def _start_host_reporters(items: list[JaylogSettings]) -> None:
     for item in items:
         if not item.host_report_enabled:
+            diagnostics.emit(
+                "host",
+                f"reporter não iniciado; serviço={item.app_name}; motivo=funcionalidade desativada",
+            )
             continue
         endpoint = item.effective_host_endpoint
         if not endpoint or not item.log_http_api_key:
+            diagnostics.emit(
+                "host",
+                f"reporter não iniciado; serviço={item.app_name}; "
+                "motivo=endpoint ou credencial ausente",
+            )
             continue
+        diagnostics.emit(
+            "host",
+            f"reporter inicializado; serviço={item.app_name}; endpoint={endpoint}",
+        )
         host_reporter = JaylogHostReporter(
             service=item.app_name,
             endpoint=endpoint,
@@ -142,10 +204,25 @@ def _start_metrics_reporter(items: list[JaylogSettings]) -> None:
     """
     for item in items:
         if not (item.host_report_enabled and item.host_metrics_enabled):
+            diagnostics.emit(
+                "metrics",
+                f"reporter não elegível; serviço={item.app_name}; "
+                "motivo=coleta de host ou métricas desativada",
+            )
             continue
         endpoint = item.effective_host_metrics_endpoint
         if not endpoint or not item.log_http_api_key:
+            diagnostics.emit(
+                "metrics",
+                f"reporter não elegível; serviço={item.app_name}; "
+                "motivo=endpoint ou credencial ausente",
+            )
             continue
+        diagnostics.emit(
+            "metrics",
+            f"reporter inicializado; serviço={item.app_name}; endpoint={endpoint}; "
+            f"intervalo={item.host_metrics_interval:g}s",
+        )
         metrics_reporter.start(
             JaylogMetricsReporter(
                 service=item.app_name,
@@ -163,13 +240,30 @@ def _start_metrics_reporter(items: list[JaylogSettings]) -> None:
 def _start_schedule_reporter(items: list[JaylogSettings]) -> None:
     """Um envio de agendas por processo, ligado ao primeiro serviço elegível."""
     if not win32.is_windows():
+        diagnostics.emit(
+            "schedule",
+            "reporter não iniciado; motivo=plataforma incompatível",
+        )
         return
     for item in items:
         if not item.host_schedule_enabled:
+            diagnostics.emit(
+                "schedule",
+                f"reporter não elegível; serviço={item.app_name}; motivo=funcionalidade desativada",
+            )
             continue
         endpoint = item.effective_host_schedule_endpoint
         if not endpoint or not item.log_http_api_key:
+            diagnostics.emit(
+                "schedule",
+                f"reporter não elegível; serviço={item.app_name}; "
+                "motivo=endpoint ou credencial ausente",
+            )
             continue
+        diagnostics.emit(
+            "schedule",
+            f"reporter inicializado; serviço={item.app_name}; endpoint={endpoint}",
+        )
         schedule_reporter.start(
             JaylogHostReporter(
                 service=item.app_name,
@@ -240,6 +334,10 @@ def get_logger(name: str | None = None) -> logging.Logger:
     if not _settings_registry:
         # _LazyLogger não é um logging.Logger de verdade: é um proxy que
         # delega (via __getattr__) para o logger real assim que ele existir.
+        diagnostics.emit(
+            "logger",
+            f"proxy lazy criado; serviço_solicitado={name or '(primeiro configurado)'}",
+        )
         return cast(logging.Logger, _LazyLogger(name))
     return _build_logger(name)
 
@@ -260,10 +358,12 @@ def _build_logger(name: str | None) -> logging.Logger:
         )
 
     settings = _settings_registry[name]
+    diagnostics.emit("logger", f"construção iniciada; serviço={name}")
 
     configure_screenshot(settings.log_screenshot_enabled)
 
     if name in _registry:
+        diagnostics.emit("logger", f"instância reutilizada; serviço={name}")
         return _registry[name][0]
 
     # ------------------------------------------------------------------
@@ -283,7 +383,12 @@ def _build_logger(name: str | None) -> logging.Logger:
             show_service=show_service,
         )
         file_handler.setLevel(settings.log_level)
+        file_handler.addFilter(_DiagnosticDestinationFilter("file"))
         downstream.append(file_handler)
+        diagnostics.emit(
+            "logger",
+            f"handler de arquivo registrado; serviço={name}; caminho={log_path}",
+        )
 
     if settings.log_console_enabled:
         console_handler = JaylogConsoleHandler(
@@ -291,7 +396,9 @@ def _build_logger(name: str | None) -> logging.Logger:
             color=settings.log_console_color,
         )
         console_handler.setLevel(settings.log_level)
+        console_handler.addFilter(_DiagnosticDestinationFilter("console"))
         downstream.append(console_handler)
+        diagnostics.emit("logger", f"handler de console registrado; serviço={name}")
 
     if settings.log_http_endpoint and settings.log_http_api_key:
         http_handler = JaylogHttpHandler(
@@ -302,7 +409,12 @@ def _build_logger(name: str | None) -> logging.Logger:
             verify=settings.log_http_verify,
         )
         http_handler.setLevel(settings.log_level)
+        http_handler.addFilter(_DiagnosticDestinationFilter("http"))
         downstream.append(http_handler)
+        diagnostics.emit(
+            "logger",
+            f"handler HTTP registrado; serviço={name}; endpoint={settings.log_http_endpoint}",
+        )
 
     # ------------------------------------------------------------------
     # Wire up the Queue + QueueListener
@@ -311,8 +423,17 @@ def _build_logger(name: str | None) -> logging.Logger:
     queue_handler = QueueHandler(queue)
     queue_handler.addFilter(ExceptionFlagFilter())
 
+    def dispatch_diagnostic(line: str, destinations: frozenset[str]) -> None:
+        queue_handler.handle(_diagnostic_record(name, line, destinations))
+
+    diagnostics.register_dispatcher(name, dispatch_diagnostic)
+
     listener = QueueListener(queue, *downstream, respect_handler_level=True)
     listener.start()
+    diagnostics.emit(
+        "logger",
+        f"QueueListener iniciado; serviço={name}; handlers_downstream={len(downstream)}",
+    )
 
     # ------------------------------------------------------------------
     # Configure the logger
@@ -324,6 +445,7 @@ def _build_logger(name: str | None) -> logging.Logger:
 
     _registry[name] = (logger, listener, queue_handler)
     _register_shutdown_hooks()
+    diagnostics.emit("logger", f"construção concluída; serviço={name}; nível={settings.log_level}")
     return logger
 
 
@@ -365,6 +487,10 @@ def shutdown(name: str | None = None) -> None:
     logger um ``QueueHandler`` apontando para um listener morto e adicionava
     outro por cima: os registros iam para uma fila que ninguém mais drenava.
     """
+    diagnostics.emit(
+        "logger",
+        f"encerramento iniciado; escopo={name or 'todos_os_serviços'}",
+    )
     targets = [name] if name else list(_registry.keys())
     for n in targets:
         if n in _registry:
@@ -372,8 +498,10 @@ def shutdown(name: str | None = None) -> None:
             # remover antes de parar o listener: nada novo entra na fila, e o
             # que já está nela ainda é drenado pelo `stop()`.
             logger.removeHandler(queue_handler)
+            diagnostics.unregister_dispatcher(n)
             listener.stop()
             queue_handler.close()
+            diagnostics.emit("logger", f"QueueListener encerrado; serviço={n}")
 
     if name is None:
         reporter.stop_all()
@@ -387,3 +515,4 @@ def shutdown(name: str | None = None) -> None:
         scheduled = schedule_reporter.active()
         if scheduled is not None and scheduled.service == name:
             schedule_reporter.stop()
+    diagnostics.emit("logger", "encerramento concluído")

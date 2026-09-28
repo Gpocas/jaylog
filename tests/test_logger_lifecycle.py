@@ -41,6 +41,60 @@ def test_lazy_build_from_worker_thread_does_not_raise() -> None:
     assert isinstance(logger_module._registry["ORDERS"][0], logging.Logger)
 
 
+def test_debug_can_be_routed_exclusively_to_file(tmp_path, capsys) -> None:
+    settings = JaylogSettings(
+        app_name="ORDERS",
+        debug=True,
+        debug_handlers="file",
+        log_dir=tmp_path,
+        log_console_enabled=False,
+        host_report_enabled=False,
+    )
+
+    configure(settings)
+    get_logger("ORDERS")
+    shutdown()
+
+    assert capsys.readouterr().err == ""
+    content = (tmp_path / settings.log_filename).read_text(encoding="utf-8")
+    assert "[DEBUG]" in content
+    assert "[jaylog] debug logger:" in content
+
+
+def test_debug_http_routing_does_not_recurse(monkeypatch, capsys) -> None:
+    from jaylog.handlers import http_handler
+
+    class Response:
+        status_code = 202
+        headers: dict = {}
+
+    class Session:
+        def __init__(self) -> None:
+            self.headers: dict = {}
+            self.proxies: dict = {}
+            self.calls = 0
+
+        def post(self, *_args, **_kwargs):
+            self.calls += 1
+            return Response()
+
+    session = Session()
+    monkeypatch.setattr(http_handler.requests, "Session", lambda: session)
+    settings = _http_settings(
+        "ORDERS",
+        debug=True,
+        debug_handlers="http",
+        host_report_enabled=False,
+    )
+
+    configure(settings)
+    get_logger("ORDERS")
+    shutdown()
+
+    assert 1 <= session.calls < 50
+    assert "[jaylog] debug" not in capsys.readouterr().err
+
+
 def _http_settings(name: str, **overrides) -> JaylogSettings:
     values = {
         "app_name": name,

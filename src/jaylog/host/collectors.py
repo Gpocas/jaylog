@@ -16,6 +16,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from jaylog.diagnostics import emit as debug
 from jaylog.host import detect_execution, detect_git, detect_python, detect_venv, identity, metrics
 from jaylog.host._safe import safe
 from jaylog.host.models import HostInfo
@@ -121,10 +122,14 @@ def collect_host_info(
     global _cached
     with _lock:
         if _cached is None:
+            debug("host", "cache vazio; coleta integral iniciada")
             _cached = (
                 _collect(git_enabled, git_dir, git_timeout, git_dirty_enabled, git_remote_enabled)
                 or HostInfo.minimal()
             )
+            debug("host", "snapshot do ambiente armazenado em cache")
+        else:
+            debug("host", "snapshot do ambiente recuperado do cache")
         return _cached
 
 

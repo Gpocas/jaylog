@@ -2,6 +2,7 @@ import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from jaylog.diagnostics import emit as debug
 from jaylog.formatters import PlainTextFormatter
 
 
@@ -32,12 +33,15 @@ class JaylogFileHandler(RotatingFileHandler):
         self.setFormatter(PlainTextFormatter(show_service=show_service))
 
     def doRollover(self) -> None:
+        debug("file", f"rotação iniciada; arquivo={self.baseFilename}")
         super().doRollover()
         self._purge_old_logs()
+        debug("file", f"rotação concluída; arquivo={self.baseFilename}")
 
     def _purge_old_logs(self) -> None:
         base = Path(self.baseFilename)
         cutoff = time.time() - self.retention_days * 86400
+        removed = 0
 
         for entry in base.parent.iterdir():
             if not entry.is_file():
@@ -48,5 +52,10 @@ class JaylogFileHandler(RotatingFileHandler):
             try:
                 if entry.stat().st_mtime < cutoff:
                     entry.unlink()
+                    removed += 1
             except OSError:
                 pass
+        debug(
+            "file",
+            f"retenção processada; arquivo_base={base}; backups_removidos={removed}",
+        )

@@ -72,6 +72,8 @@ def record_entry(record: logging.LogRecord) -> dict:
 
 
 def wants_screenshot(record: logging.LogRecord) -> bool:
+    if getattr(record, "jaylog_diagnostic", False):
+        return False
     return record.levelno >= logging.ERROR or bool(getattr(record, "is_exception", False))
 
 

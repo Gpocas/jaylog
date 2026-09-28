@@ -2,6 +2,7 @@
 
 import threading
 
+from jaylog.diagnostics import emit as debug
 from jaylog.host import detect_schedule, identity
 from jaylog.host.reporter import JaylogHostReporter
 from jaylog.runtime import RUN_ID
@@ -18,12 +19,17 @@ def payload_factory(service: str, timeout: float):
         rows = detect_schedule.collect_schedules(timeout=timeout)
         if not rows:
             return None
-        return {
+        payload = {
             "run_id": RUN_ID,
             "service": service,
             "hostname": identity.hostname(),
             "schedules": rows,
         }
+        debug(
+            "schedule",
+            f"payload construído; serviço={service}; agendas={len(rows)}",
+        )
+        return payload
 
     return factory
 

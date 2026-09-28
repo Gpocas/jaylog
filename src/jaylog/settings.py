@@ -3,6 +3,7 @@ from pathlib import Path
 from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from jaylog.diagnostics import parse_handlers
 from jaylog.host import identity
 
 # Compat: na assinatura anterior de `JaylogSettings.__init__` estes eram os dois
@@ -78,6 +79,10 @@ class JaylogSettings(BaseSettings):
 
     # App identity
     app_name: str
+    # Diagnóstico técnico do ciclo de vida, coletores e transmissões do jaylog.
+    debug: bool = False
+    # Lista separada por vírgulas: console, file e/ou http.
+    debug_handlers: str = "console"
     log_dir: Path | None = None
 
     secrets_dir: Path | None = None
@@ -175,6 +180,17 @@ class JaylogSettings(BaseSettings):
     host_schedule_enabled: bool = True
     host_schedule_http_endpoint: str | None = None
     host_schedule_timeout: float = 10.0
+
+    @field_validator("debug_handlers", mode="after")
+    @classmethod
+    def validate_debug_handlers(cls, value: str) -> str:
+        handlers = parse_handlers(value)
+        return ",".join(name for name in ("console", "file", "http") if name in handlers)
+
+    @property
+    def effective_debug_handlers(self) -> frozenset[str]:
+        """Destinos normalizados das mensagens de diagnóstico."""
+        return parse_handlers(self.debug_handlers)
 
     @property
     def effective_host_schedule_endpoint(self) -> str | None:

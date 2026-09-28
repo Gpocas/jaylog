@@ -69,3 +69,20 @@ def test_entrypoint_path_uses_executable_when_frozen(monkeypatch, tmp_path) -> N
     monkeypatch.setattr(sys, "executable", str(executable))
 
     assert detect_git.entrypoint_path() == str(executable)
+
+
+def test_entrypoint_path_falls_back_to_argv_when_main_has_no_file(monkeypatch, tmp_path) -> None:
+    script = tmp_path / "main.py"
+    monkeypatch.setitem(sys.modules, "__main__", types.SimpleNamespace())
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    monkeypatch.setattr(sys, "argv", [str(script)])
+
+    assert detect_git.entrypoint_path() == str(script)
+
+
+def test_entrypoint_path_ignores_non_file_argv(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "__main__", types.SimpleNamespace())
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    monkeypatch.setattr(sys, "argv", ["-c"])
+
+    assert detect_git.entrypoint_path() is None

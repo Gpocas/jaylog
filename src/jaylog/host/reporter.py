@@ -26,6 +26,7 @@ import requests
 import urllib3
 
 from jaylog._version import PROTOCOL_VERSION, __version__
+from jaylog.diagnostics import emit
 from jaylog.host.payload import build_host_payload
 from jaylog.runtime import RUN_ID
 
@@ -45,6 +46,11 @@ _unsupported_warned: set[str] = set()
 
 def _warn(message: str, label: str = "host") -> None:
     print(f"[jaylog] {label}: {message}", file=sys.stderr)
+
+
+def _debug(message: str, label: str) -> None:
+    """Emite rastreio de entrega somente quando ``JAYLOG_DEBUG=1``."""
+    emit(label, message)
 
 
 class JaylogHostReporter:
@@ -107,6 +113,7 @@ class JaylogHostReporter:
 
     def start(self) -> None:
         if self._thread is not None:
+            _debug("inicialização ignorada; motivo=thread já registrada", self.label)
             return
         self._thread = threading.Thread(
             target=self._run,
@@ -114,8 +121,10 @@ class JaylogHostReporter:
             daemon=True,
         )
         self._thread.start()
+        _debug(f"thread iniciada; serviço={self.service}", self.label)
 
     def stop(self, timeout: float = _STOP_JOIN_TIMEOUT) -> None:
+        _debug(f"encerramento solicitado; timeout={timeout:g}s", self.label)
         self._stop.set()
         self._wakeup.set()
         thread = self._thread
@@ -132,13 +141,16 @@ class JaylogHostReporter:
         se o reporter já desistiu em definitivo.
         """
         if self.unsupported or self.fatal or self._stop.is_set():
+            _debug("reenvio recusado; estado definitivo ou encerramento ativo", self.label)
             return False
         now = self._now()
         if now - self._last_resend < RESEND_DEBOUNCE_SECONDS:
+            _debug("reenvio suprimido pelo mecanismo de debounce", self.label)
             return False
         self._last_resend = now
         self.sent = False
         self._wakeup.set()
+        _debug("reenvio agendado por solicitação do backend", self.label)
         return True
 
     @staticmethod
@@ -167,6 +179,10 @@ class JaylogHostReporter:
                 return
             if self._stop.is_set():
                 return
+            _debug(
+                f"tentativa de entrega iniciada; atraso_prévio={delay:g}s",
+                self.label,
+            )
             outcome = self._post_once()
             if outcome is True:
                 self.sent = True
@@ -184,9 +200,18 @@ class JaylogHostReporter:
             return None
 
         if payload is None:
+            _debug(
+                f"transmissão não iniciada; motivo=payload de {self.noun} ausente",
+                self.label,
+            )
             return None
 
         try:
+            _debug(
+                f"requisição HTTP iniciada; método=POST; endpoint={self.endpoint}; "
+                f"recurso={self.noun}; serviço={self.service}",
+                self.label,
+            )
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
                 response = self._session.post(
@@ -195,10 +220,19 @@ class JaylogHostReporter:
                     timeout=self.timeout,
                     verify=self.verify,
                 )
-        except Exception:
+        except Exception as exc:
+            _debug(
+                f"requisição HTTP falhou; endpoint={self.endpoint}; "
+                f"tipo={type(exc).__name__}; detalhe={exc}",
+                self.label,
+            )
             return False  # rede fora, DNS, timeout: exatamente o caso do retry
 
         status = response.status_code
+        _debug(
+            f"resposta HTTP recebida; endpoint={self.endpoint}; status={status}",
+            self.label,
+        )
 
         if 200 <= status < 300:
             return True

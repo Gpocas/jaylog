@@ -22,6 +22,7 @@ import requests
 import urllib3
 
 from jaylog._version import PROTOCOL_VERSION, __version__
+from jaylog.diagnostics import emit as debug
 from jaylog.host import reporter as host_reporter
 from jaylog.runtime import RUN_ID
 
@@ -106,6 +107,7 @@ class JaylogMetricsReporter:
 
     def start(self) -> None:
         if self._thread is not None or self.disabled:
+            debug("metrics", "inicialização ignorada; motivo=reporter já iniciado ou desativado")
             return
         if not getattr(self._sampler, "available", True):
             self.disabled = True
@@ -113,6 +115,10 @@ class JaylogMetricsReporter:
             return
         self._thread = threading.Thread(target=self._run, name="jaylog-metrics", daemon=True)
         self._thread.start()
+        debug(
+            "metrics",
+            f"thread iniciada; serviço={self.service}; intervalo={self.interval:g}s",
+        )
 
     def stop(self, timeout: float = _STOP_JOIN_TIMEOUT) -> None:
         """
@@ -123,6 +129,10 @@ class JaylogMetricsReporter:
         presa num POST, disputar o buffer com ela não vale o risco.
         """
         deadline = time.monotonic() + timeout
+        debug(
+            "metrics",
+            f"encerramento solicitado; serviço={self.service}; timeout={timeout:g}s",
+        )
         self._stop.set()
         thread = self._thread
         if thread is None:
@@ -130,6 +140,10 @@ class JaylogMetricsReporter:
         if thread.is_alive():
             thread.join(timeout)
         if thread.is_alive() or self.disabled:
+            debug(
+                "metrics",
+                "amostra final não transmitida; motivo=thread ativa ou reporter desativado",
+            )
             return
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -140,6 +154,7 @@ class JaylogMetricsReporter:
     def _run(self) -> None:
         try:
             self._sampler.sample()  # só a base dos deltas de CPU e E/S
+            debug("metrics", "linha de base do sampler estabelecida")
             while not self._stop.wait(seconds_until_next(self.interval, self._clock())):
                 self.collect()
                 self.flush()
@@ -156,40 +171,73 @@ class JaylogMetricsReporter:
         sample = self._sampler.sample()
         if sample is not None:
             self.buffer.append(sample)
+            debug(
+                "metrics",
+                f"amostra coletada; itens_no_buffer={len(self.buffer)}; limite={MAX_BUFFERED}",
+            )
+        else:
+            debug("metrics", "sampler não produziu amostra neste ciclo")
 
     def flush(self, timeout: float | None = None) -> bool:
         """POST do buffer inteiro. ``True`` = entregue (ou nada a entregar)."""
         global _unsupported_warned
 
         if self.disabled:
+            debug("metrics", "transmissão ignorada; motivo=reporter desativado")
             return False
         if not self.buffer:
+            debug("metrics", "transmissão ignorada; motivo=buffer vazio")
             return True
 
         batch = list(self.buffer)
         body = {"run_id": RUN_ID, "service": self.service, "samples": batch}
 
         try:
+            effective_timeout = self.timeout if timeout is None else timeout
+            debug(
+                "metrics",
+                f"requisição HTTP iniciada; método=POST; endpoint={self.endpoint}; "
+                f"serviço={self.service}; amostras={len(batch)}; timeout={effective_timeout:g}s",
+            )
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
                 response = self._session.post(
                     self.endpoint,
                     json=body,
-                    timeout=self.timeout if timeout is None else timeout,
+                    timeout=effective_timeout,
                     verify=self.verify,
                 )
-        except Exception:
+        except Exception as exc:
+            debug(
+                "metrics",
+                f"requisição HTTP falhou; endpoint={self.endpoint}; "
+                f"tipo={type(exc).__name__}; detalhe={exc}; itens_no_buffer={len(self.buffer)}",
+            )
             return False  # rede fora, DNS, timeout: fica para o próximo ciclo
 
         status = response.status_code
+        debug(
+            "metrics",
+            f"resposta HTTP recebida; endpoint={self.endpoint}; status={status}",
+        )
 
         if 200 <= status < 300:
             # Só esta thread mexe no buffer enquanto ela vive (o stop() espera o
             # join), então as primeiras `len(batch)` entradas são as enviadas.
             for _ in batch:
                 self.buffer.popleft()
+            debug(
+                "metrics",
+                f"lote confirmado; amostras_removidas={len(batch)}; "
+                f"itens_no_buffer={len(self.buffer)}",
+            )
             if response.headers.get("x-jaylog-host-required") == "1":
-                self._request_resend(self.service)
+                accepted = self._request_resend(self.service)
+                debug(
+                    "metrics",
+                    f"backend solicitou sincronização do host; serviço={self.service}; "
+                    f"reenvio_aceito={accepted}",
+                )
             return True
 
         if status == 429 or status >= 500:

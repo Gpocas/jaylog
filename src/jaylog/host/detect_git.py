@@ -28,6 +28,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from jaylog.diagnostics import emit as debug
 from jaylog.host._safe import safe
 
 _CREATE_NO_WINDOW = 0x08000000
@@ -69,16 +70,35 @@ def redact_remote_url(url: str) -> str:
 
 
 def entrypoint_path() -> str | None:
-    """Arquivo que iniciou o processo: script de ``__main__`` ou .exe frozen."""
+    """Arquivo que iniciou o processo: ``__main__``, ``argv[0]`` ou .exe frozen."""
     try:
         if getattr(sys, "frozen", False):
-            return os.path.abspath(sys.executable)
+            path = os.path.abspath(sys.executable)
+            debug("entrypoint", f"executável congelado identificado; caminho={path}")
+            return path
         main = sys.modules.get("__main__")
         main_file = getattr(main, "__file__", None)
         if main_file:
-            return os.path.abspath(main_file)
-    except Exception:
+            path = os.path.abspath(main_file)
+            debug("entrypoint", f"arquivo principal identificado por __main__; caminho={path}")
+            return path
+        # Em launchers que executam o script via ``runpy`` ou substituem o
+        # módulo ``__main__``, ``__file__`` pode não sobreviver. ``argv[0]``
+        # preserva o arquivo original nesse caso. ``-c`` e ``-`` não são
+        # arquivos e não podem ser associados a uma task com segurança.
+        argv = getattr(sys, "argv", ())
+        argv0 = argv[0] if argv else None
+        if argv0 and argv0 not in ("-c", "-"):
+            path = os.path.abspath(argv0)
+            debug("entrypoint", f"arquivo principal identificado por argv[0]; caminho={path}")
+            return path
+    except Exception as exc:
+        debug(
+            "entrypoint",
+            f"identificação falhou; tipo={type(exc).__name__}; detalhe={exc}",
+        )
         return None
+    debug("entrypoint", "arquivo principal não identificado")
     return None
 
 
@@ -121,6 +141,11 @@ def _popen_kwargs() -> dict:
 def _run_git(args: list[str], cwd: str, timeout: float) -> str | None:
     """stdout do comando, ou ``None`` se o git faltou, falhou ou estourou o timeout."""
     try:
+        debug(
+            "git",
+            f"subprocesso iniciado; comando=git {' '.join(args)}; diretório={cwd}; "
+            f"timeout={timeout:g}s",
+        )
         result = subprocess.run(
             ["git", *args],
             cwd=cwd,
@@ -130,11 +155,22 @@ def _run_git(args: list[str], cwd: str, timeout: float) -> str | None:
             env=_git_env(),
             **_popen_kwargs(),
         )
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as exc:
+        debug(
+            "git",
+            f"subprocesso falhou; comando=git {' '.join(args)}; "
+            f"tipo={type(exc).__name__}; detalhe={exc}",
+        )
         # git ausente do PATH, cwd inexistente, timeout
         return None
     if result.returncode != 0:
+        debug(
+            "git",
+            f"subprocesso rejeitado; comando=git {' '.join(args)}; "
+            f"código_de_saída={result.returncode}",
+        )
         return None
+    debug("git", f"subprocesso concluído; comando=git {' '.join(args)}; código_de_saída=0")
     return result.stdout.decode("utf-8", errors="replace").strip()
 
 
@@ -156,20 +192,24 @@ def detect_git(
       deploy por tag, e não pode ser lido como "sem git".
     """
     if not enabled:
+        debug("git", "detecção não iniciada; motivo=funcionalidade desativada")
         return GIT_UNKNOWN
 
     cwd = git_search_dir(git_dir)
+    debug("git", f"detecção iniciada; diretório_de_busca={cwd}")
     if not os.path.isdir(cwd):
         cwd = os.getcwd()
 
     version_out = _run_git(["--version"], cwd, timeout)
     if version_out is None:
+        debug("git", "detecção concluída; git_disponível=False")
         return GitInfo(available=False)
 
     version = version_out.removeprefix("git version ").strip() or None
 
     root = _run_git(["rev-parse", "--show-toplevel"], cwd, timeout)
     if root is None:
+        debug("git", "detecção concluída; git_disponível=True; repositório=False")
         return GitInfo(available=True, version=version, repo=False)
 
     branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd, timeout)
@@ -193,7 +233,7 @@ def detect_git(
         if raw_remote:
             remote_url = redact_remote_url(raw_remote)
 
-    return GitInfo(
+    info = GitInfo(
         available=True,
         version=version,
         repo=True,
@@ -206,6 +246,13 @@ def detect_git(
         dirty=dirty,
         remote_url=remote_url,
     )
+    debug(
+        "git",
+        f"detecção concluída; git_disponível=True; repositório=True; "
+        f"branch={branch or '(detached)'}; commit={commit_short or '(indisponível)'}; "
+        f"dirty={dirty}",
+    )
+    return info
 
 
 __all__ = [

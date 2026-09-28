@@ -8,6 +8,7 @@ import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
+from jaylog.diagnostics import emit
 from jaylog.host import detect_execution, detect_git, schedule_parser, win32
 from jaylog.host._safe import safe
 from jaylog.host.schedule_parser import ExecAction
@@ -27,6 +28,11 @@ class ScheduledTask:
 
 def _warn(message: str) -> None:
     print(f"[jaylog] schedule: {message}", file=sys.stderr)
+
+
+def _debug(message: str) -> None:
+    """Emite o rastreio da coleta quando ``JAYLOG_DEBUG=1``."""
+    emit("schedule", message)
 
 
 def decode_output(raw: bytes) -> str:
@@ -68,6 +74,7 @@ def split_tasks(text: str) -> list[ScheduledTask]:
 def query_tasks(timeout: float) -> list[ScheduledTask] | None:
     """Tasks ativas fora de ``\\Microsoft\\``, ou ``None`` quando a consulta falha."""
     try:
+        _debug(f"consulta XML iniciada; comando=`schtasks /query /xml`; timeout={timeout:g}s")
         result = subprocess.run(
             ["schtasks", "/query", "/xml"],
             timeout=timeout,
@@ -75,20 +82,31 @@ def query_tasks(timeout: float) -> list[ScheduledTask] | None:
             capture_output=True,
             **detect_git._popen_kwargs(),
         )
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as exc:
+        _debug(
+            "consulta XML encerrada por exceção; "
+            f"tipo={type(exc).__name__}; detalhe={exc}"
+        )
         return None
     if result.returncode != 0:
+        _debug(f"consulta XML rejeitada; código_de_saída={result.returncode}")
         return None
     try:
-        tasks = split_tasks(decode_output(result.stdout))
-    except (ET.ParseError, UnicodeError):
+        raw_tasks = split_tasks(decode_output(result.stdout))
+    except (ET.ParseError, UnicodeError) as exc:
+        _debug(f"análise sintática do XML falhou; detalhe={exc}")
         return None
-    return [
+    tasks = [
         task
-        for task in tasks
+        for task in raw_tasks
         if not task.path.lower().startswith("\\microsoft\\")
         and schedule_parser.task_enabled(task.element)
     ]
+    _debug(
+        f"análise sintática do XML concluída; tasks_lidas={len(raw_tasks)}; "
+        f"tasks_elegíveis={len(tasks)}"
+    )
+    return tasks
 
 
 def _clean(path: str) -> str:
@@ -152,12 +170,21 @@ def collect_schedules(
 ) -> list[dict] | None:
     """Coleta agendas prontas para o POST, sem nunca afetar o processo observado."""
     if not win32.is_windows():
+        _debug("coleta não iniciada; motivo=plataforma incompatível")
         return None
-    if detect_execution.detect_execution().mode != detect_execution.TASK_SCHEDULER:
+    execution = detect_execution.detect_execution()
+    _debug(
+        "contexto de execução identificado; "
+        f"modo={execution.mode}; cadeia={execution.detail or 'indisponível'}"
+    )
+    if execution.mode != detect_execution.TASK_SCHEDULER:
+        _debug("coleta não iniciada; motivo=processo não originado pelo Task Scheduler")
         return None
     entrypoint = detect_git.entrypoint_path()
     if not entrypoint:
+        _debug("coleta interrompida; motivo=entrypoint não identificado")
         return None
+    _debug(f"entrypoint identificado; caminho={entrypoint}")
     tasks = (query or query_tasks)(timeout)
     if tasks is None:
         _warn(
@@ -170,8 +197,15 @@ def collect_schedules(
         if matches_entrypoint(
             schedule_parser.exec_actions(task.element), entrypoint, read_file=read_file
         ):
-            rows.extend(schedule_parser.parse_task(task.element, task.path, now=now))
+            task_rows = schedule_parser.parse_task(task.element, task.path, now=now)
+            _debug(
+                f"task associada ao entrypoint; caminho={task.path}; "
+                f"agendas_extraídas={len(task_rows)}"
+            )
+            rows.extend(task_rows)
+    _debug(f"parsing concluído; agendas_brutas={len(rows)}")
     rows = schedule_parser.consolidate(rows)
+    _debug(f"consolidação concluída; agendas_para_envio={len(rows)}")
     if len(rows) > MAX_ROWS:
         _warn(f"{len(rows)} agendas passam do teto de {MAX_ROWS}; nada foi enviado")
         return None
