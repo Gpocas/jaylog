@@ -12,9 +12,7 @@ fmt:
 test:
     uv run pytest
 
-
-publish alt='patch': test
+publish: test
     echo $PYPI_USER
     echo $PYPI_PASSWORD
-    uv version --bump {{alt}}
     uv build && uv publish -u $PYPI_USER -p $PYPI_PASSWORD
