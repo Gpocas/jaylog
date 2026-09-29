@@ -83,10 +83,7 @@ def query_tasks(timeout: float) -> list[ScheduledTask] | None:
             **detect_git._popen_kwargs(),
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        _debug(
-            "consulta XML encerrada por exceção; "
-            f"tipo={type(exc).__name__}; detalhe={exc}"
-        )
+        _debug(f"consulta XML encerrada por exceção; tipo={type(exc).__name__}; detalhe={exc}")
         return None
     if result.returncode != 0:
         _debug(f"consulta XML rejeitada; código_de_saída={result.returncode}")
@@ -157,11 +154,27 @@ def matches_entrypoint(actions: list[ExecAction], entrypoint: str, *, read_file=
             folders = {ntpath.dirname(command)}
             if workdir:
                 folders.add(_resolve(workdir, ""))
+            content = read_file(command)
             if target_dir in folders:
-                content = read_file(command)
                 if content is None or target_name in content.lower():
                     return True
+            elif content is not None and _batch_cites(content, target, folders):
+                return True
     return False
+
+
+def _batch_cites(content: str, target: str, folders: set[str]) -> bool:
+    """O ``.bat`` cita o script pelo caminho completo ou relativo à sua pasta/"Iniciar em"."""
+    text = content.lower().replace("/", "\\").replace('"', "")
+    candidates = {target}
+    for folder in folders:
+        prefix = folder.rstrip("\\") + "\\"
+        if target.startswith(prefix):
+            candidates.add(target[len(prefix) :])
+    return any(
+        re.search(rf"(?<![\w.\\:-]){re.escape(candidate)}(?![\w.])", text)
+        for candidate in candidates
+    )
 
 
 @safe(default=None)
