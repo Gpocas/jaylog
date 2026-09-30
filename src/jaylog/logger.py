@@ -11,8 +11,9 @@ from jaylog.filters import ExceptionFlagFilter
 from jaylog.handlers.console_handler import JaylogConsoleHandler
 from jaylog.handlers.file_handler import JaylogFileHandler
 from jaylog.handlers.http_handler import JaylogHttpHandler
-from jaylog.host import metrics_reporter, reporter, schedule_reporter, win32
+from jaylog.host import heartbeat_reporter, metrics_reporter, reporter, schedule_reporter, win32
 from jaylog.host.collectors import collect_host_info
+from jaylog.host.heartbeat_reporter import HeartbeatTarget
 from jaylog.host.metrics_reporter import JaylogMetricsReporter
 from jaylog.host.payload import build_host_payload
 from jaylog.host.reporter import JaylogHostReporter
@@ -110,6 +111,7 @@ def configure(settings: JaylogSettings | list[JaylogSettings]) -> None:
     _warn_insecure_transport(items)
     _start_host_reporters(items)
     _start_metrics_reporter(items)
+    _register_heartbeat_targets(items)
     _start_schedule_reporter(items)
     diagnostics.emit("logger", "configuração concluída")
 
@@ -235,6 +237,77 @@ def _start_metrics_reporter(items: list[JaylogSettings]) -> None:
             )
         )
         return
+
+
+def _register_heartbeat_targets(items: list[JaylogSettings]) -> None:
+    """
+    Um alvo por serviço elegível, cada um com o endpoint e a chave do seu item.
+
+    Não cria thread nem faz rede: a thread só nasce na 1ª chamada de
+    ``heartbeat()``, então quem não usa o recurso não paga nada por ele.
+    """
+    targets: list[HeartbeatTarget] = []
+    for item in items:
+        if not (item.host_report_enabled and item.host_heartbeat_enabled):
+            diagnostics.emit(
+                "heartbeat",
+                f"alvo não registrado; serviço={item.app_name}; "
+                "motivo=coleta de host ou heartbeat desativado",
+            )
+            continue
+        endpoint = item.effective_host_heartbeat_endpoint
+        if not endpoint or not item.log_http_api_key:
+            diagnostics.emit(
+                "heartbeat",
+                f"alvo não registrado; serviço={item.app_name}; "
+                "motivo=endpoint ou credencial ausente",
+            )
+            continue
+        targets.append(
+            HeartbeatTarget(
+                service=item.app_name,
+                endpoint=endpoint,
+                api_key=item.log_http_api_key,
+                interval=item.host_heartbeat_interval,
+                timeout=item.log_http_timeout,
+                proxy=item.log_http_proxy,
+                verify=item.log_http_verify,
+            )
+        )
+    heartbeat_reporter.register(targets)
+
+
+def heartbeat(service: str | None = None) -> None:
+    """
+    Avisa que o loop do serviço está progredindo, mesmo sem emitir logs.
+
+    Chame **dentro do loop**, uma vez por iteração::
+
+        while True:
+            do_work()
+            jaylog.heartbeat()
+
+    É barata (incrementa um contador) e nunca bloqueia nem levanta: o envio ao
+    backend acontece numa thread própria, no máximo uma vez por
+    ``host_heartbeat_interval``. O backend passa a tratar o serviço como ativo
+    pelo mais recente entre o último log e o último heartbeat.
+
+    Sem argumento vale para o **primeiro** logger registrado (a mesma regra do
+    ``get_logger()`` sem nome); com ``service="BILLING"``, para aquele
+    ``app_name``. Antes de ``configure()``, para um serviço desconhecido ou com o
+    heartbeat desativado, não faz nada.
+
+    Não chame de uma thread separada que continue viva com o loop travado: isso
+    anularia o sinal.
+    """
+    try:
+        name = service if service is not None else next(iter(_settings_registry), None)
+        if name is None:
+            diagnostics.emit("heartbeat", "beat ignorado; motivo=configure() ainda não foi chamado")
+            return
+        heartbeat_reporter.beat(name)
+    except Exception:  # noqa: BLE001 - o loop do usuário nunca quebra por causa do heartbeat
+        pass
 
 
 def _start_schedule_reporter(items: list[JaylogSettings]) -> None:
@@ -506,9 +579,11 @@ def shutdown(name: str | None = None) -> None:
     if name is None:
         reporter.stop_all()
         metrics_reporter.stop()
+        heartbeat_reporter.stop()
         schedule_reporter.stop()
     else:
         reporter.stop(name)
+        heartbeat_reporter.remove(name)
         active = metrics_reporter.active()
         if active is not None and active.service == name:
             metrics_reporter.stop()
