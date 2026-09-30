@@ -195,3 +195,145 @@ def test_configure_starts_schedule_reporter_only_on_windows(monkeypatch) -> None
 
     shutdown()
     assert schedule_reporter.active() is None
+
+
+class _OkSession:
+    """Sessão sem rede que aceita qualquer POST."""
+
+    def post(self, *_args, **_kwargs):
+        import types
+
+        return types.SimpleNamespace(status_code=200, headers={}, text="")
+
+
+def _fake_heartbeat(monkeypatch, *, autostart: bool = False):
+    from jaylog.host import heartbeat_reporter
+    from jaylog.host.heartbeat_reporter import JaylogHeartbeatReporter
+
+    fake = JaylogHeartbeatReporter(
+        session=_OkSession(), request_resend=lambda service: True, autostart=autostart
+    )
+    monkeypatch.setattr(heartbeat_reporter, "_reporter", fake)
+    return fake
+
+
+def _heartbeat_threads() -> list:
+    return [t for t in threading.enumerate() if t.name == "jaylog-heartbeat" and t.is_alive()]
+
+
+def test_configure_registers_a_heartbeat_target_per_eligible_logger(monkeypatch) -> None:
+    _no_threads(monkeypatch)
+    fake = _fake_heartbeat(monkeypatch)
+
+    configure(
+        [
+            _http_settings("ORDERS", host_heartbeat_interval=30),
+            _http_settings(
+                "BILLING", log_http_endpoint="https://other/logs/add", log_http_api_key="k2"
+            ),
+            _http_settings("OFF", host_heartbeat_enabled=False),
+            _http_settings("NOHOST", host_report_enabled=False),
+            _http_settings("NOKEY", log_http_api_key=None),
+        ]
+    )
+
+    targets = fake.targets
+    assert sorted(targets) == ["BILLING", "ORDERS"]
+    assert targets["ORDERS"].endpoint == "https://api.example/logs/heartbeat"
+    assert targets["ORDERS"].interval == 30
+    assert targets["BILLING"].endpoint == "https://other/logs/heartbeat"
+    assert targets["BILLING"].api_key == "k2"
+
+
+def test_heartbeat_defaults_to_first_registered_logger(monkeypatch) -> None:
+    import jaylog
+
+    _no_threads(monkeypatch)
+    fake = _fake_heartbeat(monkeypatch)
+    configure([_http_settings("ORDERS"), _http_settings("BILLING")])
+
+    jaylog.heartbeat()
+    jaylog.heartbeat("BILLING")
+    jaylog.heartbeat("NOPE")
+
+    assert fake.beats == {"ORDERS": 1, "BILLING": 1}
+
+
+def test_heartbeat_is_a_silent_noop_without_configure() -> None:
+    import jaylog
+
+    jaylog.heartbeat()
+    jaylog.heartbeat("ORDERS")
+
+    assert _heartbeat_threads() == []
+
+
+def test_heartbeat_is_a_silent_noop_after_shutdown(monkeypatch) -> None:
+    import jaylog
+
+    _no_threads(monkeypatch)
+    fake = _fake_heartbeat(monkeypatch)
+    configure(_http_settings("ORDERS"))
+    shutdown()
+
+    jaylog.heartbeat()
+
+    assert fake.beats == {}
+    assert _heartbeat_threads() == []
+
+
+def test_heartbeat_never_raises_even_if_the_reporter_breaks(monkeypatch) -> None:
+    import jaylog
+    from jaylog.host import heartbeat_reporter
+
+    _no_threads(monkeypatch)
+    configure(_http_settings("ORDERS"))
+
+    def boom(service):
+        raise RuntimeError("quebrou")
+
+    monkeypatch.setattr(heartbeat_reporter, "beat", boom)
+
+    jaylog.heartbeat()  # não pode propagar para o loop do usuário
+
+
+def test_heartbeat_thread_starts_on_first_call_and_stops_on_shutdown(monkeypatch) -> None:
+    import jaylog
+
+    _no_threads(monkeypatch)
+    _fake_heartbeat(monkeypatch, autostart=True)
+    configure(_http_settings("ORDERS"))
+    assert _heartbeat_threads() == []
+
+    jaylog.heartbeat()
+    assert len(_heartbeat_threads()) == 1
+
+    shutdown()
+    assert _heartbeat_threads() == []
+
+
+def test_shutdown_of_one_logger_removes_only_its_heartbeat_target(monkeypatch) -> None:
+    _no_threads(monkeypatch)
+    fake = _fake_heartbeat(monkeypatch)
+    configure([_http_settings("ORDERS"), _http_settings("BILLING")])
+
+    shutdown("BILLING")
+    assert sorted(fake.targets) == ["ORDERS"]
+
+    shutdown()
+    assert fake.targets == {}
+
+
+def test_reconfigure_discards_heartbeat_state(monkeypatch) -> None:
+    import jaylog
+
+    _no_threads(monkeypatch)
+    fake = _fake_heartbeat(monkeypatch)
+    configure(_http_settings("ORDERS"))
+    jaylog.heartbeat()
+    assert fake.beats == {"ORDERS": 1}
+
+    configure(_http_settings("ORDERS"))
+
+    assert fake.beats == {}
+    assert sorted(fake.targets) == ["ORDERS"]

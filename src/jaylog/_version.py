@@ -11,7 +11,8 @@ from importlib.metadata import PackageNotFoundError, version
 #: e no payload de host. Mede o rollout; não dirige lógica no backend.
 #: 3: limites da máquina no payload de host + ``POST /logs/host-metrics``.
 #: 4: ``POST /logs/host-schedules`` (agendas do Task Scheduler do Windows).
-PROTOCOL_VERSION = 4
+#: 5: ``POST /logs/heartbeat`` (sinal explícito de que o loop do serviço progride).
+PROTOCOL_VERSION = 5
 
 try:
     __version__ = version("jaylog")

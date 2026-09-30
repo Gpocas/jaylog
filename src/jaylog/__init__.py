@@ -1,10 +1,11 @@
 from jaylog._version import PROTOCOL_VERSION, __version__
-from jaylog.logger import configure, get_logger, shutdown
+from jaylog.logger import configure, get_logger, heartbeat, shutdown
 from jaylog.settings import JaylogSettings
 
 __all__ = [
     "configure",
     "get_logger",
+    "heartbeat",
     "shutdown",
     "JaylogSettings",
     "__version__",
