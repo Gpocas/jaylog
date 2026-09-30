@@ -74,6 +74,11 @@ class JaylogHeartbeatReporter:
         self._sent: dict[str, int] = {}
         self._disabled: set[str] = set()
         self._ignored: set[str] = set()
+        #: muda a cada `register()`/`_reset()`. Um `deliver()` anota a geração do
+        #: seu snapshot e só grava `_sent`/`_disabled` se ela ainda for a atual:
+        #: senão uma thread presa num POST antigo (ex.: `stop()` estourou o
+        #: timeout) sujaria o registro novo com contadores e 404 que não são dele.
+        self._generation = 0
 
     # ------------------------------------------------------------------
     # estado
@@ -100,6 +105,7 @@ class JaylogHeartbeatReporter:
     def register(self, targets: list[HeartbeatTarget]) -> None:
         """Substitui os alvos e descarta todo o estado anterior."""
         with self._lock:
+            self._generation += 1
             self._targets = {t.service: t for t in targets}
             self._beats.clear()
             self._sent.clear()
@@ -151,7 +157,7 @@ class JaylogHeartbeatReporter:
     def _run(self, stop: threading.Event) -> None:
         try:
             while True:
-                self.deliver()
+                self.deliver(stop=stop)
                 if not self._has_active_targets():
                     debug("heartbeat", "thread encerrada; motivo=nenhum serviço ativo")
                     return
@@ -185,6 +191,7 @@ class JaylogHeartbeatReporter:
 
     def _reset(self) -> None:
         with self._lock:
+            self._generation += 1
             self._thread = None
             self._stop_event = None
             self._targets = {}
@@ -197,16 +204,25 @@ class JaylogHeartbeatReporter:
     # entrega (síncrona — os testes chamam direto)
     # ------------------------------------------------------------------
 
-    def deliver(self, deadline: float | None = None) -> None:
-        """Um POST por serviço com beat pendente; respeita ``deadline`` (monotonic)."""
+    def deliver(self, deadline: float | None = None, stop: threading.Event | None = None) -> None:
+        """
+        Um POST por serviço com beat pendente; respeita ``deadline`` (monotonic).
+        ``stop`` é o Event da thread: depois de um ``stop()`` que estourou o
+        timeout, ela não pode continuar postando o resto do snapshot com as
+        credenciais antigas. Chamadas diretas (testes, envio final) não passam.
+        """
         with self._lock:
+            generation = self._generation
             pending = [
                 (target, self._beats[target.service])
                 for target in self._targets.values()
                 if target.service not in self._disabled
                 and self._beats.get(target.service, 0) > self._sent.get(target.service, 0)
             ]
-        for target, seq in pending:
+        for index, (target, seq) in enumerate(pending):
+            # só *entre* POSTs: o primeiro sempre sai (o ciclo acabou de acordar)
+            if index and stop is not None and stop.is_set():
+                return
             timeout = target.timeout
             if deadline is not None:
                 remaining = deadline - time.monotonic()
@@ -214,12 +230,12 @@ class JaylogHeartbeatReporter:
                     debug("heartbeat", "envio interrompido; motivo=prazo de encerramento esgotado")
                     return
                 timeout = min(timeout, remaining)
-            if self._post(target, timeout):
+            if self._post(target, timeout, generation):
                 with self._lock:
-                    if target.service in self._targets:
+                    if generation == self._generation and target.service in self._targets:
                         self._sent[target.service] = max(self._sent.get(target.service, 0), seq)
 
-    def _post(self, target: HeartbeatTarget, timeout: float) -> bool:
+    def _post(self, target: HeartbeatTarget, timeout: float, generation: int) -> bool:
         """``True`` = entregue. ``False`` = tentar de novo no próximo ciclo (ou desativado)."""
         if self._session is None:
             self._session = requests.Session()
@@ -274,6 +290,8 @@ class JaylogHeartbeatReporter:
             return False
 
         with self._lock:
+            if generation != self._generation:
+                return False  # resposta de um registro que não existe mais
             self._disabled.add(target.service)
         if status in (404, 405):
             # Backend anterior à rota. O mesmo contrato do /logs/host-metrics:

@@ -262,3 +262,102 @@ def test_interval_comes_from_the_first_target():
     reporter, _ = make([target("ORDERS", interval=30.0), target("BILLING", interval=90.0)])
 
     assert reporter.interval == 30.0
+
+
+def test_register_during_post_does_not_lose_the_new_registrations_beats():
+    holder = {}
+
+    def reregister_and_beat():
+        holder["r"].register([target()])
+        holder["r"].beat("ORDERS")
+
+    reporter, session = make(on_post=reregister_and_beat)
+    holder["r"] = reporter
+    for _ in range(5):
+        reporter.beat("ORDERS")
+
+    reporter.deliver()  # o POST antigo (seq=5) volta depois do register
+    session.on_post = None
+    assert len(session.calls) == 1
+
+    reporter.deliver()  # o beat do registro novo (contador 1) ainda está pendente
+    assert len(session.calls) == 2
+    reporter.deliver()
+    assert len(session.calls) == 2
+
+
+def test_late_404_from_a_stale_registration_does_not_disable_the_new_one(capsys):
+    holder = {}
+
+    def reregister_and_beat():
+        holder["r"].register([target()])
+        holder["r"].beat("ORDERS")
+
+    reporter, session = make(responses=[FakeResponse(404)], on_post=reregister_and_beat)
+    holder["r"] = reporter
+    reporter.beat("ORDERS")
+
+    reporter.deliver()
+    session.on_post = None
+
+    assert reporter.beat("ORDERS") is True
+    reporter.deliver()
+    assert len(session.calls) == 2
+    assert capsys.readouterr().err == ""
+
+
+def test_deliver_stops_between_posts_once_the_stop_event_is_set():
+    stop = threading.Event()
+    reporter, session = make([target("ORDERS"), target("BILLING")], on_post=stop.set)
+    reporter.beat("ORDERS")
+    reporter.beat("BILLING")
+
+    reporter.deliver(stop=stop)
+
+    assert len(session.calls) == 1
+
+
+def test_stop_does_not_send_while_the_thread_is_stuck_in_a_post():
+    entered = threading.Event()
+    release = threading.Event()
+
+    def block():
+        entered.set()
+        release.wait(5)
+
+    session = FakeSession(on_post=block)
+    reporter = JaylogHeartbeatReporter(session=session, request_resend=lambda s: True)
+    reporter.register([target(interval=60.0)])
+    reporter.beat("ORDERS")
+    assert entered.wait(5)
+    old_thread = reporter._thread
+
+    reporter.stop(timeout=0)
+
+    assert len(session.calls) == 1  # stop() não disputou o estado com o POST em voo
+    assert reporter._thread is None
+
+    # registro novo enquanto a thread antiga ainda está presa; o 200 tardio dela
+    # (seq=1) não pode marcar como enviado o beat do registro novo (contador 1)
+    reporter._autostart = False
+    reporter.register([target()])
+    reporter.beat("ORDERS")
+    release.set()
+    old_thread.join(5)
+    assert not old_thread.is_alive()
+
+    assert reporter.beats == {"ORDERS": 1}
+    reporter.deliver()
+    assert len(session.calls) == 2
+
+
+def test_thread_is_a_named_daemon():
+    reporter = JaylogHeartbeatReporter(session=FakeSession(), request_resend=lambda s: True)
+    reporter.register([target(interval=60.0)])
+
+    reporter.beat("ORDERS")
+    thread = reporter._thread
+
+    assert thread.name == "jaylog-heartbeat"
+    assert thread.daemon is True
+    reporter.stop()
