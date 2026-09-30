@@ -31,3 +31,10 @@ def test_derives_metrics_endpoint(log_endpoint: str, metrics_endpoint: str) -> N
     from jaylog.endpoints import derive_endpoint
 
     assert derive_endpoint(log_endpoint, "host-metrics") == metrics_endpoint
+
+
+def test_derives_heartbeat_endpoint() -> None:
+    from jaylog.endpoints import derive_endpoint
+
+    assert derive_endpoint("https://api/logs/add", "heartbeat") == "https://api/logs/heartbeat"
+    assert derive_endpoint("https://api", "heartbeat") == "https://api/heartbeat"

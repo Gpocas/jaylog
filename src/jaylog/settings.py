@@ -174,6 +174,34 @@ class JaylogSettings(BaseSettings):
         return derive_endpoint(self.log_http_endpoint, "host-metrics")
 
     # ------------------------------------------------------------------
+    # Heartbeat explícito — `jaylog.heartbeat()`, chamado pelo loop do usuário
+    # ------------------------------------------------------------------
+
+    # Só vale junto com `host_report_enabled`: o backend credita o beat à linha de
+    # `log_hosts` da execução, que só existe depois do registro de host.
+    host_heartbeat_enabled: bool = True
+
+    # Segundos entre envios. Só sai POST se houve `heartbeat()` desde o último
+    # envio: o intervalo limita a taxa, não cria beats. Acima de ~15 min o serviço
+    # aparece como parado entre envios (limite do dashboard).
+    host_heartbeat_interval: float = 60
+
+    # Derivado de `log_http_endpoint` (`/logs/add` -> `/logs/heartbeat`) se não
+    # definido.
+    host_heartbeat_http_endpoint: str | None = None
+
+    @property
+    def effective_host_heartbeat_endpoint(self) -> str | None:
+        """URL do `POST /logs/heartbeat`: o override, ou a derivada do endpoint de log."""
+        if self.host_heartbeat_http_endpoint:
+            return self.host_heartbeat_http_endpoint
+        if not self.log_http_endpoint:
+            return None
+        from jaylog.endpoints import derive_endpoint
+
+        return derive_endpoint(self.log_http_endpoint, "heartbeat")
+
+    # ------------------------------------------------------------------
     # Agendas do Task Scheduler — envio único quando o bot veio dele
     # ------------------------------------------------------------------
 
@@ -208,6 +236,13 @@ class JaylogSettings(BaseSettings):
     def validate_host_metrics_interval(cls, v: float) -> float:
         if v < 10:
             raise ValueError("JAYLOG_HOST_METRICS_INTERVAL deve ser de pelo menos 10 segundos")
+        return v
+
+    @field_validator("host_heartbeat_interval", mode="after")
+    @classmethod
+    def validate_host_heartbeat_interval(cls, v: float) -> float:
+        if v < 10:
+            raise ValueError("JAYLOG_HOST_HEARTBEAT_INTERVAL deve ser de pelo menos 10 segundos")
         return v
 
     @property

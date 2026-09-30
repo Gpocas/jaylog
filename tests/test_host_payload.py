@@ -43,8 +43,8 @@ def test_collected_host_info_fills_machine_limits(monkeypatch) -> None:
     assert info.disk_path == "C:\\"
 
 
-def test_protocol_version_is_4() -> None:
+def test_protocol_version_is_5() -> None:
     from jaylog._version import PROTOCOL_VERSION
 
-    assert PROTOCOL_VERSION == 4
-    assert HostInfo().protocol_version == 4
+    assert PROTOCOL_VERSION == 5
+    assert HostInfo().protocol_version == 5

@@ -87,3 +87,33 @@ def test_host_schedule_endpoint_override_and_missing_log_endpoint() -> None:
         JaylogSettings(app_name="ORDERS", log_http_endpoint=None).effective_host_schedule_endpoint
         is None
     )
+
+
+def test_host_heartbeat_settings_defaults_and_derived_endpoint() -> None:
+    settings = JaylogSettings(app_name="ORDERS", log_http_endpoint="https://api.example/logs/add")
+
+    assert settings.host_heartbeat_enabled is True
+    assert settings.host_heartbeat_interval == 60
+    assert settings.effective_host_heartbeat_endpoint == "https://api.example/logs/heartbeat"
+
+
+def test_host_heartbeat_endpoint_override_and_missing_log_endpoint() -> None:
+    override = JaylogSettings(
+        app_name="ORDERS",
+        log_http_endpoint="https://api.example/logs/add",
+        host_heartbeat_http_endpoint="https://other/beat",
+    )
+    assert override.effective_host_heartbeat_endpoint == "https://other/beat"
+
+    assert (
+        JaylogSettings(app_name="ORDERS", log_http_endpoint=None).effective_host_heartbeat_endpoint
+        is None
+    )
+
+
+def test_host_heartbeat_interval_has_a_floor() -> None:
+    import pydantic
+    import pytest
+
+    with pytest.raises(pydantic.ValidationError, match="JAYLOG_HOST_HEARTBEAT_INTERVAL"):
+        JaylogSettings(app_name="ORDERS", host_heartbeat_interval=5)
