@@ -55,6 +55,7 @@ def test_404_disables_reporter_and_422_is_fatal() -> None:
 def test_resend_is_debounced() -> None:
     reporter, _ = make_reporter([])
     reporter.sent = True
+    reporter._now = lambda: 0.0
 
     assert reporter.request_resend() is True
     assert reporter.sent is False

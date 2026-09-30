@@ -97,7 +97,10 @@ class JaylogHostReporter:
         self._stop = threading.Event()
         self._wakeup = threading.Event()
         self._thread: threading.Thread | None = None
-        self._last_resend = 0.0
+        # ``time.monotonic()`` não tem uma origem fixa. Em processos que
+        # começam logo após o boot, ele pode ainda ser menor que o debounce;
+        # portanto 0.0 não representa com segurança “nunca reenviado”.
+        self._last_resend: float | None = None
 
         self._session = session if session is not None else requests.Session()
         self._session.headers["x-api-key"] = api_key
@@ -144,7 +147,10 @@ class JaylogHostReporter:
             _debug("reenvio recusado; estado definitivo ou encerramento ativo", self.label)
             return False
         now = self._now()
-        if now - self._last_resend < RESEND_DEBOUNCE_SECONDS:
+        if (
+            self._last_resend is not None
+            and now - self._last_resend < RESEND_DEBOUNCE_SECONDS
+        ):
             _debug("reenvio suprimido pelo mecanismo de debounce", self.label)
             return False
         self._last_resend = now
