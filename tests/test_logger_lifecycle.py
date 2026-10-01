@@ -337,3 +337,30 @@ def test_reconfigure_discards_heartbeat_state(monkeypatch) -> None:
 
     assert fake.beats == {}
     assert sorted(fake.targets) == ["ORDERS"]
+
+
+def test_configure_registers_the_host_before_any_log_is_emitted(monkeypatch) -> None:
+    from jaylog.host.metrics_reporter import JaylogMetricsReporter
+
+    started: list = []
+
+    class _FakeHostReporter:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+            self.service = kwargs["service"]
+
+        def start(self) -> None:
+            started.append(self)
+
+        def stop(self, timeout: float = 0.0) -> None:
+            pass
+
+    monkeypatch.setattr(logger_module, "JaylogHostReporter", _FakeHostReporter)
+    monkeypatch.setattr(JaylogMetricsReporter, "start", lambda self: None)
+
+    configure(_http_settings("ORDERS"))
+
+    # nenhum get_logger()/log foi chamado: o dashboard só enxerga o ambiente da
+    # execução ativa porque o registro sai do configure(), e não do 1º log
+    assert [r.kwargs["service"] for r in started] == ["ORDERS"]
+    assert started[0].kwargs["endpoint"] == "https://api.example/logs/host"

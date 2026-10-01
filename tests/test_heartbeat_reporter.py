@@ -192,6 +192,27 @@ def test_host_required_header_requests_resend_for_that_service():
     assert asked == ["ORDERS"]
 
 
+def test_host_required_from_heartbeat_wakes_the_registered_host_reporter_without_any_log():
+    from jaylog.host import reporter as host_registry
+    from jaylog.host.reporter import JaylogHostReporter
+
+    host = JaylogHostReporter(service="ORDERS", endpoint="https://api/ORDERS/logs/host", api_key="k")
+    host.sent = True  # o backend perdeu o registro depois de uma entrega bem-sucedida
+    host_registry.register(host)
+    try:
+        session = FakeSession([FakeResponse(200, {"x-jaylog-host-required": "1"})])
+        reporter = JaylogHeartbeatReporter(session=session, autostart=False)  # request_resend real
+        reporter.register([target()])
+
+        reporter.beat("ORDERS")
+        reporter.deliver()
+
+        assert host.sent is False
+        assert host._wakeup.is_set()
+    finally:
+        host_registry.stop_all()
+
+
 def test_first_beat_starts_the_thread_and_stop_sends_pending():
     session = FakeSession()
     reporter = JaylogHeartbeatReporter(session=session, request_resend=lambda s: True)
