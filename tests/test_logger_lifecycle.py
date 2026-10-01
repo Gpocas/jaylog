@@ -358,7 +358,7 @@ def test_configure_registers_the_host_before_any_log_is_emitted(monkeypatch) -> 
     monkeypatch.setattr(logger_module, "JaylogHostReporter", _FakeHostReporter)
     monkeypatch.setattr(JaylogMetricsReporter, "start", lambda self: None)
 
-    configure(_http_settings("ORDERS"))
+    configure(_http_settings("ORDERS", host_schedule_enabled=False))
 
     # nenhum get_logger()/log foi chamado: o dashboard só enxerga o ambiente da
     # execução ativa porque o registro sai do configure(), e não do 1º log
