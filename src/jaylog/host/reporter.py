@@ -20,15 +20,10 @@ precisar ser dono do reporter.
 import sys
 import threading
 import time
-import warnings
 
-import requests
-import urllib3
-
-from jaylog._version import PROTOCOL_VERSION, __version__
+from jaylog._http import DEFAULT_VERIFY, prepare_session, silence_insecure_warning
 from jaylog.diagnostics import emit
 from jaylog.host.payload import build_host_payload
-from jaylog.runtime import RUN_ID
 
 #: Pausas entre tentativas: ~10 min de insistência no total. Depois disso o
 #: reporter dorme num Event até que alguém peça reenvio — continuar batendo
@@ -69,7 +64,7 @@ class JaylogHostReporter:
         *,
         timeout: float = 10.0,
         proxy: str | None = None,
-        verify: bool | str = False,
+        verify: bool | str = DEFAULT_VERIFY,
         session=None,
         backoff=DEFAULT_BACKOFF,
         payload_factory=None,
@@ -102,13 +97,8 @@ class JaylogHostReporter:
         # portanto 0.0 não representa com segurança “nunca reenviado”.
         self._last_resend: float | None = None
 
-        self._session = session if session is not None else requests.Session()
-        self._session.headers["x-api-key"] = api_key
-        self._session.headers["x-jaylog-version"] = __version__
-        self._session.headers["x-jaylog-protocol"] = str(PROTOCOL_VERSION)
-        self._session.headers["x-jaylog-run-id"] = RUN_ID
-        if proxy:
-            self._session.proxies.update({"http": proxy, "https": proxy})
+        self._session = prepare_session(api_key, proxy, session)
+        silence_insecure_warning(endpoint, verify)
 
     # ------------------------------------------------------------------
     # ciclo de vida
@@ -218,14 +208,12 @@ class JaylogHostReporter:
                 f"recurso={self.noun}; serviço={self.service}",
                 self.label,
             )
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
-                response = self._session.post(
-                    self.endpoint,
-                    json=payload,
-                    timeout=self.timeout,
-                    verify=self.verify,
-                )
+            response = self._session.post(
+                self.endpoint,
+                json=payload,
+                timeout=self.timeout,
+                verify=self.verify,
+            )
         except Exception as exc:
             _debug(
                 f"requisição HTTP falhou; endpoint={self.endpoint}; "

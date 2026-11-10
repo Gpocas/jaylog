@@ -127,17 +127,37 @@ def _warn_insecure_transport(items: list[JaylogSettings]) -> None:
     if _insecure_transport_warned:
         return
     for item in items:
-        endpoint = item.log_http_endpoint or ""
-        if endpoint.startswith("https://") and item.log_http_verify is False:
-            _insecure_transport_warned = True
-            print(
+        if item.log_http_verify is not False or not _has_https_endpoint(item):
+            continue
+        _insecure_transport_warned = True
+        if "log_http_verify" in item.model_fields_set:
+            message = (
+                "[jaylog] verificação do certificado TLS DESATIVADA por "
+                "configuração (JAYLOG_LOG_HTTP_VERIFY=false). Os envios ficam "
+                "expostos a interceptação; prefira "
+                "JAYLOG_LOG_HTTP_VERIFY=/caminho/ca-bundle.pem."
+            )
+        else:
+            message = (
                 "[jaylog] o certificado TLS do endpoint de log NÃO está sendo "
                 "verificado (padrão atual). Defina "
                 "JAYLOG_LOG_HTTP_VERIFY=/caminho/ca-bundle.pem (ou =true) para "
-                "habilitar. O padrão passa a ser 'true' na 0.4.0.",
-                file=sys.stderr,
+                "habilitar. O padrão passa a ser 'true' na 0.4.0."
             )
-            return
+        print(message, file=sys.stderr)
+        return
+
+
+def _has_https_endpoint(item: JaylogSettings) -> bool:
+    """Algum POST deste item (log, host, métricas, heartbeat, agendas) usa HTTPS?"""
+    endpoints = (
+        item.log_http_endpoint,
+        item.effective_host_endpoint,
+        item.effective_host_metrics_endpoint,
+        item.effective_host_heartbeat_endpoint,
+        item.effective_host_schedule_endpoint,
+    )
+    return any((endpoint or "").lower().startswith("https://") for endpoint in endpoints)
 
 
 def _host_payload_factory(settings: JaylogSettings):

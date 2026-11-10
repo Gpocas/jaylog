@@ -1,15 +1,10 @@
 import json
 import logging
-import warnings
 
-import requests
-import urllib3
-
-from jaylog._version import PROTOCOL_VERSION, __version__
+from jaylog._http import DEFAULT_VERIFY, prepare_session, silence_insecure_warning
 from jaylog.context import record_entry, record_screenshot
 from jaylog.diagnostics import emit as debug
 from jaylog.host import reporter
-from jaylog.runtime import RUN_ID
 
 #: O backend sinaliza por header que não conhece este `run_id` — normalmente
 #: porque o log correu na frente do POST de host. Ver `reporter.request_resend`.
@@ -52,18 +47,14 @@ class JaylogHttpHandler(logging.Handler):
         api_key: str,
         timeout: float = 5.0,
         proxy: str | None = None,
-        verify: bool | str = False,
+        verify: bool | str = DEFAULT_VERIFY,
     ) -> None:
         super().__init__()
         self.endpoint = endpoint
         self.timeout = timeout
         self.verify = verify
-        self.proxy = {"http": proxy, "https": proxy} if proxy else None
-        self._session = requests.Session()
-        self._session.headers["x-api-key"] = api_key
-        self._session.headers["x-jaylog-version"] = __version__
-        self._session.headers["x-jaylog-protocol"] = str(PROTOCOL_VERSION)
-        self._session.headers["x-jaylog-run-id"] = RUN_ID
+        self._session = prepare_session(api_key, proxy)
+        silence_insecure_warning(endpoint, verify)
 
     def mapLogRecord(self, record: logging.LogRecord) -> dict:
         # Único ponto do programa que pede screenshot: é o único com para onde
@@ -75,8 +66,6 @@ class JaylogHttpHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
             diagnostic_record = bool(getattr(record, "jaylog_diagnostic", False))
-            if self.proxy:
-                self._session.proxies.update(self.proxy)
 
             fields = self.mapLogRecord(record)
             if not diagnostic_record:
@@ -86,14 +75,12 @@ class JaylogHttpHandler(logging.Handler):
                     f"serviço={record.name}; nível={record.levelname}; "
                     f"captura_anexada={fields.get('log_img') is not None}",
                 )
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
-                response = self._session.post(
-                    self.endpoint,
-                    files=_to_multipart(fields),
-                    timeout=self.timeout,
-                    verify=self.verify,
-                )
+            response = self._session.post(
+                self.endpoint,
+                files=_to_multipart(fields),
+                timeout=self.timeout,
+                verify=self.verify,
+            )
             if not diagnostic_record:
                 debug(
                     "http",

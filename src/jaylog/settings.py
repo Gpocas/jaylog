@@ -3,6 +3,7 @@ from pathlib import Path
 from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from jaylog._http import DEFAULT_VERIFY, parse_verify
 from jaylog.diagnostics import parse_handlers
 from jaylog.host import identity
 
@@ -109,16 +110,22 @@ class JaylogSettings(BaseSettings):
     # Screenshot (log_img field) — desativar com JAYLOG_LOG_SCREENSHOT_ENABLED=false
     log_screenshot_enabled: bool = False
 
-    # Verificação do certificado TLS no envio HTTP. Aceita bool ou o caminho de
-    # um CA bundle (`requests` entende os dois).
+    # Verificação do certificado TLS no envio HTTP: `true`, `false` ou o caminho
+    # de um CA bundle. Vale para todos os POSTs (log, host, métricas, heartbeat e
+    # agendas). Ver `jaylog._http.parse_verify` para os valores aceitos.
     #
     # O padrão continua `False` na 0.3.x: virar `True` derrubaria, no dia do
     # upgrade, todo bot atrás de proxy corporativo com inspeção TLS — uma
     # biblioteca de log não pode quebrar a aplicação que ela observa. É dívida
-    # consciente, com data: o padrão vira `True` na 0.4.0. Quem já tem o bundle
-    # corporativo pode antecipar com
-    # `JAYLOG_LOG_HTTP_VERIFY=/caminho/corp-ca.pem`.
-    log_http_verify: bool | str = False
+    # consciente, com data: o padrão vira `True` na 0.4.0
+    # (`jaylog._http.DEFAULT_VERIFY`). Quem já tem o bundle corporativo pode
+    # antecipar com `JAYLOG_LOG_HTTP_VERIFY=/caminho/corp-ca.pem`.
+    log_http_verify: bool | str = DEFAULT_VERIFY
+
+    @field_validator("log_http_verify", mode="before")
+    @classmethod
+    def _parse_log_http_verify(cls, value: object) -> bool | str:
+        return parse_verify(value)
 
     # ------------------------------------------------------------------
     # Registro de ambiente (host) — enviado uma vez por processo/serviço

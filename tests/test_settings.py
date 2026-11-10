@@ -13,7 +13,7 @@ def test_host_settings_and_lazy_log_filename(tmp_path) -> None:
     assert settings.effective_host_timeout == 8
     assert settings.log_filename is not None
     assert settings.host_report_enabled is True
-    assert settings.log_http_verify is False
+    assert settings.log_http_verify is False  # padrão da 0.3.x (vira True na 0.4.0)
     assert settings.debug is False
     assert settings.debug_handlers == "console"
     assert settings.effective_debug_handlers == {"console"}

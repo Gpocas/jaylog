@@ -19,13 +19,11 @@ Sem buffer e sem backoff próprio: o ciclo já é de 60 s, e o único beat que i
 import sys
 import threading
 import time
-import warnings
 from dataclasses import dataclass
 
 import requests
-import urllib3
 
-from jaylog._version import PROTOCOL_VERSION, __version__
+from jaylog._http import jaylog_headers, proxies_for, silence_insecure_warning
 from jaylog.diagnostics import emit as debug
 from jaylog.host import reporter as host_reporter
 from jaylog.runtime import RUN_ID
@@ -48,8 +46,9 @@ class HeartbeatTarget:
     interval: float = _DEFAULT_INTERVAL
     timeout: float = 5.0
     proxy: str | None = None
-    #: seguro por padrão; quem decide o valor real é o `log_http_verify` do item,
-    #: passado por `configure()` (hoje `False` por compatibilidade, `True` na 0.4.0)
+    #: seguro por padrão: o valor real vem do `log_http_verify` do item, sempre
+    #: passado por `configure()`. Não usa `DEFAULT_VERIFY` (False na 0.3.x) para
+    #: não rebaixar um padrão que já era seguro.
     verify: bool | str = True
 
 
@@ -104,6 +103,8 @@ class JaylogHeartbeatReporter:
 
     def register(self, targets: list[HeartbeatTarget]) -> None:
         """Substitui os alvos e descarta todo o estado anterior."""
+        for target in targets:
+            silence_insecure_warning(target.endpoint, target.verify)
         with self._lock:
             self._generation += 1
             self._targets = {t.service: t for t in targets}
@@ -241,17 +242,13 @@ class JaylogHeartbeatReporter:
             self._session = requests.Session()
         kwargs: dict = {
             "json": {"run_id": RUN_ID, "service": target.service},
-            "headers": {
-                "x-api-key": target.api_key,
-                "x-jaylog-version": __version__,
-                "x-jaylog-protocol": str(PROTOCOL_VERSION),
-                "x-jaylog-run-id": RUN_ID,
-            },
+            "headers": jaylog_headers(target.api_key),
             "timeout": timeout,
             "verify": target.verify,
         }
-        if target.proxy:
-            kwargs["proxies"] = {"http": target.proxy, "https": target.proxy}
+        proxies = proxies_for(target.proxy)
+        if proxies:
+            kwargs["proxies"] = proxies
 
         try:
             debug(
@@ -259,9 +256,7 @@ class JaylogHeartbeatReporter:
                 f"requisição HTTP iniciada; método=POST; endpoint={target.endpoint}; "
                 f"serviço={target.service}; timeout={timeout:g}s",
             )
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
-                response = self._session.post(target.endpoint, **kwargs)
+            response = self._session.post(target.endpoint, **kwargs)
         except Exception as exc:
             debug(
                 "heartbeat",

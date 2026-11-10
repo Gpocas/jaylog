@@ -15,13 +15,9 @@ amostras no buffer para o próximo ciclo; o buffer é limitado a 1 h.
 import sys
 import threading
 import time
-import warnings
 from collections import deque
 
-import requests
-import urllib3
-
-from jaylog._version import PROTOCOL_VERSION, __version__
+from jaylog._http import DEFAULT_VERIFY, prepare_session, silence_insecure_warning
 from jaylog.diagnostics import emit as debug
 from jaylog.host import reporter as host_reporter
 from jaylog.runtime import RUN_ID
@@ -67,7 +63,7 @@ class JaylogMetricsReporter:
         interval: float = 60.0,
         timeout: float = 5.0,
         proxy: str | None = None,
-        verify: bool | str = False,
+        verify: bool | str = DEFAULT_VERIFY,
         session=None,
         sampler=None,
         clock=time.time,
@@ -93,13 +89,8 @@ class JaylogMetricsReporter:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
-        self._session = session if session is not None else requests.Session()
-        self._session.headers["x-api-key"] = api_key
-        self._session.headers["x-jaylog-version"] = __version__
-        self._session.headers["x-jaylog-protocol"] = str(PROTOCOL_VERSION)
-        self._session.headers["x-jaylog-run-id"] = RUN_ID
-        if proxy:
-            self._session.proxies.update({"http": proxy, "https": proxy})
+        self._session = prepare_session(api_key, proxy, session)
+        silence_insecure_warning(endpoint, verify)
 
     # ------------------------------------------------------------------
     # ciclo de vida
@@ -199,14 +190,12 @@ class JaylogMetricsReporter:
                 f"requisição HTTP iniciada; método=POST; endpoint={self.endpoint}; "
                 f"serviço={self.service}; amostras={len(batch)}; timeout={effective_timeout:g}s",
             )
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
-                response = self._session.post(
-                    self.endpoint,
-                    json=body,
-                    timeout=effective_timeout,
-                    verify=self.verify,
-                )
+            response = self._session.post(
+                self.endpoint,
+                json=body,
+                timeout=effective_timeout,
+                verify=self.verify,
+            )
         except Exception as exc:
             debug(
                 "metrics",

@@ -62,7 +62,7 @@ def test_debug_can_be_routed_exclusively_to_file(tmp_path, capsys) -> None:
 
 
 def test_debug_http_routing_does_not_recurse(monkeypatch, capsys) -> None:
-    from jaylog.handlers import http_handler
+    from jaylog import _http
 
     class Response:
         status_code = 202
@@ -79,7 +79,7 @@ def test_debug_http_routing_does_not_recurse(monkeypatch, capsys) -> None:
             return Response()
 
     session = Session()
-    monkeypatch.setattr(http_handler.requests, "Session", lambda: session)
+    monkeypatch.setattr(_http.requests, "Session", lambda: session)
     settings = _http_settings(
         "ORDERS",
         debug=True,
